@@ -290,7 +290,7 @@
   <main class="panel">
     <div class="form-wrap">
       <h2>Create your account</h2>
-      <p class="sub">Already have one? <a href="login.html">Sign in</a></p>
+      <p class="sub">Already have one? <a href="/login">Sign in</a></p>
 
       <div class="form-msg" id="formMsg"></div>
 
@@ -338,6 +338,10 @@
   </main>
 
 <script>
+  if (localStorage.getItem('waypoint_token')) {
+    window.location.href = '/dashboard';
+  }
+
   const form = document.getElementById('registerForm');
   const fullNameInput = document.getElementById('fullName');
   const emailInput = document.getElementById('email');
@@ -469,12 +473,15 @@
       const data = await response.json();
       // Expected: { token, user: { user_id, email, full_name, role, ... } }
       if (data.token) {
-        localStorage.setItem('globetrotter_token', data.token);
+        localStorage.setItem('waypoint_token', data.token);
+      }
+      if (data.user) {
+        localStorage.setItem('waypoint_user', JSON.stringify(data.user));
       }
 
-      showMessage('Account created. Redirecting to sign in…', 'success');
+      showMessage('Account created. Redirecting…', 'success');
       setTimeout(() => {
-        window.location.href = 'login.html';
+        window.location.href = '/dashboard';
       }, 900);
 
     } catch (err) {

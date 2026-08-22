@@ -1,0 +1,140 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Dashboard — Waypoint</title>
+<link rel="stylesheet" href="/static/css/app.css">
+</head>
+<body>
+
+<nav class="topnav" id="topnav"></nav>
+
+<main class="page">
+  <div class="page-head">
+    <div>
+      <h1 id="welcomeHeading">Welcome back</h1>
+      <p class="sub" id="welcomeSub">Here's where your trips stand.</p>
+    </div>
+    <a href="/trips/new" class="btn btn-accent">+ Plan New Trip</a>
+  </div>
+
+  <div class="card" style="margin-bottom:36px; display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:16px;">
+    <div>
+      <div class="sans" style="font-size:11px; letter-spacing:0.1em; text-transform:uppercase; color:rgba(15,42,46,0.5); margin-bottom:6px;">Total planned spend</div>
+      <div style="font-size:28px; font-weight:500;" id="totalBudget">$0</div>
+    </div>
+    <div class="budget-pill" id="tripCountPill">0 trips planned</div>
+  </div>
+
+  <section style="margin-bottom:44px;">
+    <div class="page-head" style="margin-bottom:16px;">
+      <h1 style="font-size:22px;">Your trips</h1>
+    </div>
+    <div id="tripsArea" class="grid">
+      <div class="loading">Loading your trips…</div>
+    </div>
+  </section>
+
+  <section>
+    <div class="page-head" style="margin-bottom:16px;">
+      <h1 style="font-size:22px;">Popular destinations</h1>
+      <span class="sub">Tap a city to start a trip that begins there</span>
+    </div>
+    <div id="citiesArea" class="grid">
+      <div class="loading">Loading destinations…</div>
+    </div>
+  </section>
+</main>
+
+<script src="/static/js/app.js"></script>
+<script>
+  if (requireAuth()) {
+    renderNav('dashboard');
+    init();
+  }
+
+  async function init() {
+    const user = getStoredUser();
+    if (user && user.full_name) {
+      document.getElementById('welcomeHeading').textContent = `Welcome back, ${user.full_name.split(' ')[0]}`;
+    }
+
+    await Promise.all([loadTrips(), loadCities()]);
+  }
+
+  async function loadTrips() {
+    const area = document.getElementById('tripsArea');
+    try {
+      const { trips } = await apiFetch('/api/trips');
+
+      const totalBudget = trips.reduce((sum, t) => sum + (t.estimated_cost || 0), 0);
+      document.getElementById('totalBudget').textContent = formatMoney(totalBudget);
+      document.getElementById('tripCountPill').textContent =
+        `${trips.length} trip${trips.length === 1 ? '' : 's'} planned`;
+
+      if (trips.length === 0) {
+        area.innerHTML = `
+          <div class="empty" style="grid-column:1/-1;">
+            <h3>No trips yet</h3>
+            <p>Start planning your first multi-city adventure.</p>
+            <div style="margin-top:16px;"><a href="/trips/new" class="btn btn-primary">Plan a trip</a></div>
+          </div>`;
+        return;
+      }
+
+      const recent = trips.slice(0, 6);
+      area.innerHTML = recent.map(tripCardHtml).join('');
+    } catch (err) {
+      area.innerHTML = `<div class="empty" style="grid-column:1/-1;">Couldn't load your trips: ${escapeHtml(err.message)}</div>`;
+    }
+  }
+
+  function tripCardHtml(t) {
+    const cover = t.cover_photo_url
+      ? `background-image:url('${t.cover_photo_url}')`
+      : '';
+    return `
+      <div class="trip-card">
+        <div class="cover" style="${cover}"></div>
+        <div class="body">
+          <h3>${escapeHtml(t.trip_name)}</h3>
+          <div class="meta">${formatDateRange(t.start_date, t.end_date)}</div>
+          <div class="stats">
+            <span>${t.stop_count} stop${t.stop_count === 1 ? '' : 's'}</span>
+            <span>${formatMoney(t.estimated_cost)}</span>
+          </div>
+          <div class="actions">
+            <a href="/trips/${t.trip_id}" class="btn btn-outline btn-sm">View</a>
+            <a href="/trips/${t.trip_id}/plan" class="btn btn-primary btn-sm">Edit plan</a>
+          </div>
+        </div>
+      </div>`;
+  }
+
+  async function loadCities() {
+    const area = document.getElementById('citiesArea');
+    try {
+      const { cities } = await apiFetch('/api/cities?sort=popularity&limit=8');
+      area.innerHTML = cities.map(cityCardHtml).join('');
+    } catch (err) {
+      area.innerHTML = `<div class="empty" style="grid-column:1/-1;">Couldn't load destinations: ${escapeHtml(err.message)}</div>`;
+    }
+  }
+
+  function cityCardHtml(c) {
+    const cover = c.image_url ? `background-image:url('${c.image_url}')` : '';
+    return `
+      <a href="/trips/new" style="text-decoration:none; color:inherit;">
+        <div class="city-card">
+          <div class="cover" style="${cover}"></div>
+          <div class="body">
+            <h4>${escapeHtml(c.city_name)}</h4>
+            <div class="meta">${escapeHtml(c.country)} · cost index ${c.cost_index}</div>
+          </div>
+        </div>
+      </a>`;
+  }
+</script>
+</body>
+</html>

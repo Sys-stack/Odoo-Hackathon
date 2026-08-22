@@ -1,0 +1,17 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Waypoint</title>
+<style>
+  body{ background:#F4EFE6; color:#0F2A2E; font-family: 'Iowan Old Style', Georgia, serif;
+        min-height:100vh; display:flex; align-items:center; justify-content:center; }
+</style>
+</head>
+<body>
+  <p>Loading Waypoint…</p>
+  <script>
+    window.location.href = localStorage.getItem('waypoint_token') ? '/dashboard' : '/login';
+  </script>
+</body>
+</html>

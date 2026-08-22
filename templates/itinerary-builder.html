@@ -1,0 +1,409 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Plan Itinerary — Waypoint</title>
+<link rel="stylesheet" href="/static/css/app.css">
+</head>
+<body>
+
+<nav class="topnav" id="topnav"></nav>
+
+<main class="page">
+  <div class="page-head">
+    <div>
+      <p class="sub"><a href="/trips">← My Trips</a></p>
+      <h1 id="tripName">Loading…</h1>
+      <p class="sub" id="tripDates"></p>
+    </div>
+    <div style="display:flex; gap:10px; align-items:center;">
+      <div class="budget-pill" id="budgetPill">$0 estimated</div>
+      <a class="btn btn-outline" id="viewLink" href="#">View itinerary</a>
+    </div>
+  </div>
+
+  <div style="margin-bottom:20px;">
+    <button class="btn btn-accent" id="addStopBtn">+ Add Stop</button>
+  </div>
+
+  <div id="stopsArea">
+    <div class="loading">Loading itinerary…</div>
+  </div>
+</main>
+
+<!-- Add Stop modal -->
+<div class="modal-overlay" id="stopModal">
+  <div class="modal">
+    <div class="modal-head">
+      <h3>Add a stop</h3>
+      <button class="modal-close" id="closeStopModal">&times;</button>
+    </div>
+
+    <input type="text" class="search-input" id="citySearchInput" placeholder="Search cities (e.g. Tokyo, Portugal)…">
+    <div class="search-results" id="cityResults"></div>
+
+    <div id="stopDatesSection" style="display:none; margin-top:18px; padding-top:18px; border-top:1px solid var(--line);">
+      <p class="sans" style="font-size:13px; margin-bottom:12px;">Selected: <strong id="selectedCityLabel"></strong></p>
+      <div class="field-row">
+        <div class="field">
+          <label for="stopArrival">Arrival</label>
+          <input type="date" id="stopArrival">
+        </div>
+        <div class="field">
+          <label for="stopDeparture">Departure</label>
+          <input type="date" id="stopDeparture">
+        </div>
+      </div>
+      <div class="form-msg" id="stopModalMsg"></div>
+      <button class="btn btn-accent" id="confirmStopBtn">Add stop</button>
+    </div>
+  </div>
+</div>
+
+<!-- Add Activity modal -->
+<div class="modal-overlay" id="activityModal">
+  <div class="modal">
+    <div class="modal-head">
+      <h3>Add an activity</h3>
+      <button class="modal-close" id="closeActivityModal">&times;</button>
+    </div>
+
+    <input type="text" class="search-input" id="activitySearchInput" placeholder="Search activities…">
+    <div class="search-results" id="activityResults"></div>
+
+    <div style="margin-top:18px; padding-top:18px; border-top:1px solid var(--line);">
+      <p class="sans" style="font-size:12px; color:rgba(15,42,46,0.5); margin-bottom:10px;">
+        Selected an activity above, or fill in your own:
+      </p>
+      <div class="field">
+        <label for="activityTitle">Title</label>
+        <input type="text" id="activityTitle" placeholder="e.g. Dinner reservation">
+      </div>
+      <div class="field-row">
+        <div class="field">
+          <label for="activityDate">Date</label>
+          <input type="date" id="activityDate">
+        </div>
+        <div class="field">
+          <label for="activityTime">Time <span style="text-transform:none; letter-spacing:0;">(optional)</span></label>
+          <input type="time" id="activityTime">
+        </div>
+      </div>
+      <div class="field">
+        <label for="activityCost">Estimated cost ($)</label>
+        <input type="number" id="activityCost" min="0" step="1" value="0">
+      </div>
+      <div class="form-msg" id="activityModalMsg"></div>
+      <button class="btn btn-accent" id="confirmActivityBtn">Add to itinerary</button>
+    </div>
+  </div>
+</div>
+
+<script src="/static/js/app.js"></script>
+<script>
+  const TRIP_ID = {{ trip_id }};
+  let trip = null;
+  let activeStopId = null;
+  let activeCityId = null;
+  let selectedActivity = null; // { activity_id, title, cost } or null for custom
+
+  if (requireAuth()) {
+    renderNav('trips');
+    document.getElementById('viewLink').href = `/trips/${TRIP_ID}`;
+    loadTrip();
+  }
+
+  async function loadTrip() {
+    const area = document.getElementById('stopsArea');
+    try {
+      const { trip: t } = await apiFetch(`/api/trips/${TRIP_ID}`);
+      trip = t;
+      document.getElementById('tripName').textContent = trip.trip_name;
+      document.getElementById('tripDates').textContent =
+        `${formatDateRange(trip.start_date, trip.end_date)} · ${dayCount(trip.start_date, trip.end_date)} days`;
+      document.getElementById('budgetPill').textContent = `${formatMoney(trip.estimated_cost)} estimated`;
+      renderStops();
+    } catch (err) {
+      area.innerHTML = `<div class="empty">Couldn't load this trip: ${escapeHtml(err.message)}</div>`;
+    }
+  }
+
+  function renderStops() {
+    const area = document.getElementById('stopsArea');
+    if (!trip.stops.length) {
+      area.innerHTML = `
+        <div class="empty">
+          <h3>No stops yet</h3>
+          <p>Add your first city to start building the itinerary.</p>
+        </div>`;
+      return;
+    }
+
+    area.innerHTML = trip.stops.map((s, i) => stopHtml(s, i, trip.stops.length)).join('');
+
+    trip.stops.forEach((s, i) => {
+      document.getElementById(`up-${s.stop_id}`)?.addEventListener('click', () => reorderStop(s.stop_id, 'up'));
+      document.getElementById(`down-${s.stop_id}`)?.addEventListener('click', () => reorderStop(s.stop_id, 'down'));
+      document.getElementById(`delstop-${s.stop_id}`)?.addEventListener('click', () => deleteStop(s.stop_id, s.city.city_name));
+      document.getElementById(`addact-${s.stop_id}`)?.addEventListener('click', () => openActivityModal(s));
+
+      s.activities.forEach(a => {
+        document.getElementById(`delact-${a.itinerary_activity_id}`)?.addEventListener('click', () =>
+          deleteActivity(a.itinerary_activity_id));
+      });
+    });
+  }
+
+  function stopHtml(s, i, total) {
+    const activitiesHtml = s.activities.length
+      ? s.activities.map(a => `
+          <div class="activity-row">
+            <div class="info">
+              <div class="title">${escapeHtml(a.title || 'Untitled activity')}</div>
+              <div class="meta">${formatDateShort(a.scheduled_date)}${a.start_time ? ' · ' + a.start_time : ''} · <span class="tag">${escapeHtml(a.category || 'custom')}</span></div>
+            </div>
+            <div class="right">
+              <span class="cost">${formatMoney(a.cost)}</span>
+              <button class="icon-btn" id="delact-${a.itinerary_activity_id}" title="Remove">×</button>
+            </div>
+          </div>`).join('')
+      : `<div class="stop-empty">No activities added yet.</div>`;
+
+    return `
+      <div class="stop-block">
+        <div class="stop-head">
+          <div>
+            <div class="title">${i + 1}. ${escapeHtml(s.city.city_name)}, ${escapeHtml(s.city.country)}</div>
+            <div class="dates">${formatDateRange(s.arrival_date, s.departure_date)}</div>
+          </div>
+          <div class="stop-actions">
+            <button class="icon-btn" id="up-${s.stop_id}" title="Move earlier" ${i === 0 ? 'disabled' : ''}>↑</button>
+            <button class="icon-btn" id="down-${s.stop_id}" title="Move later" ${i === total - 1 ? 'disabled' : ''}>↓</button>
+            <button class="btn btn-outline btn-sm" id="addact-${s.stop_id}">+ Activity</button>
+            <button class="btn btn-danger btn-sm" id="delstop-${s.stop_id}">Remove</button>
+          </div>
+        </div>
+        ${activitiesHtml}
+      </div>`;
+  }
+
+  async function reorderStop(stopId, direction) {
+    try {
+      await apiFetch(`/api/stops/${stopId}/reorder`, {
+        method: 'POST',
+        body: JSON.stringify({ direction }),
+      });
+      loadTrip();
+    } catch (err) {
+      alert(`Couldn't reorder: ${err.message}`);
+    }
+  }
+
+  async function deleteStop(stopId, cityName) {
+    if (!confirm(`Remove ${cityName} and all its activities from this trip?`)) return;
+    try {
+      await apiFetch(`/api/stops/${stopId}`, { method: 'DELETE' });
+      loadTrip();
+    } catch (err) {
+      alert(`Couldn't remove stop: ${err.message}`);
+    }
+  }
+
+  async function deleteActivity(iaId) {
+    try {
+      await apiFetch(`/api/itinerary-activities/${iaId}`, { method: 'DELETE' });
+      loadTrip();
+    } catch (err) {
+      alert(`Couldn't remove activity: ${err.message}`);
+    }
+  }
+
+  /* ---------- Add Stop modal ---------- */
+  const stopModal = document.getElementById('stopModal');
+  const cityResults = document.getElementById('cityResults');
+  const citySearchInput = document.getElementById('citySearchInput');
+  let selectedCity = null;
+  let citySearchDebounce = null;
+
+  document.getElementById('addStopBtn').addEventListener('click', () => {
+    selectedCity = null;
+    citySearchInput.value = '';
+    cityResults.innerHTML = '';
+    document.getElementById('stopDatesSection').style.display = 'none';
+    document.getElementById('stopModalMsg').className = 'form-msg';
+    document.getElementById('stopArrival').value = trip.start_date;
+    document.getElementById('stopDeparture').value = trip.end_date;
+    stopModal.classList.add('show');
+    searchCities('');
+  });
+
+  document.getElementById('closeStopModal').addEventListener('click', () => stopModal.classList.remove('show'));
+  stopModal.addEventListener('click', (e) => { if (e.target === stopModal) stopModal.classList.remove('show'); });
+
+  citySearchInput.addEventListener('input', () => {
+    clearTimeout(citySearchDebounce);
+    citySearchDebounce = setTimeout(() => searchCities(citySearchInput.value.trim()), 250);
+  });
+
+  async function searchCities(q) {
+    try {
+      const { cities } = await apiFetch(`/api/cities?q=${encodeURIComponent(q)}&limit=15`);
+      cityResults.innerHTML = cities.length
+        ? cities.map(c => `
+            <div class="result-row" data-city-id="${c.city_id}" data-city-name="${escapeHtml(c.city_name)}" data-country="${escapeHtml(c.country)}">
+              <div>
+                <div class="title">${escapeHtml(c.city_name)}</div>
+                <div class="meta">${escapeHtml(c.country)} · ${escapeHtml(c.region || '')}</div>
+              </div>
+              <div class="price">cost ${c.cost_index}</div>
+            </div>`).join('')
+        : `<div class="stop-empty">No cities found.</div>`;
+
+      cityResults.querySelectorAll('.result-row').forEach(row => {
+        row.addEventListener('click', () => {
+          selectedCity = { city_id: row.dataset.cityId, name: row.dataset.cityName, country: row.dataset.country };
+          document.getElementById('selectedCityLabel').textContent = `${selectedCity.name}, ${selectedCity.country}`;
+          document.getElementById('stopDatesSection').style.display = 'block';
+        });
+      });
+    } catch (err) {
+      cityResults.innerHTML = `<div class="stop-empty">Search failed: ${escapeHtml(err.message)}</div>`;
+    }
+  }
+
+  document.getElementById('confirmStopBtn').addEventListener('click', async () => {
+    const msg = document.getElementById('stopModalMsg');
+    if (!selectedCity) {
+      msg.textContent = 'Pick a city first.';
+      msg.className = 'form-msg show error';
+      return;
+    }
+    const arrival = document.getElementById('stopArrival').value;
+    const departure = document.getElementById('stopDeparture').value;
+    if (!arrival || !departure || departure < arrival) {
+      msg.textContent = 'Departure must be on or after arrival.';
+      msg.className = 'form-msg show error';
+      return;
+    }
+
+    try {
+      await apiFetch(`/api/trips/${TRIP_ID}/stops`, {
+        method: 'POST',
+        body: JSON.stringify({ city_id: selectedCity.city_id, arrival_date: arrival, departure_date: departure }),
+      });
+      stopModal.classList.remove('show');
+      loadTrip();
+    } catch (err) {
+      msg.textContent = err.message;
+      msg.className = 'form-msg show error';
+    }
+  });
+
+  /* ---------- Add Activity modal ---------- */
+  const activityModal = document.getElementById('activityModal');
+  const activityResults = document.getElementById('activityResults');
+  const activitySearchInput = document.getElementById('activitySearchInput');
+  let activitySearchDebounce = null;
+
+  function openActivityModal(stop) {
+    activeStopId = stop.stop_id;
+    activeCityId = stop.city.city_id;
+    selectedActivity = null;
+
+    activitySearchInput.value = '';
+    document.getElementById('activityTitle').value = '';
+    document.getElementById('activityCost').value = 0;
+    document.getElementById('activityTime').value = '';
+    document.getElementById('activityDate').value = stop.arrival_date;
+    document.getElementById('activityDate').min = stop.arrival_date;
+    document.getElementById('activityDate').max = stop.departure_date;
+    document.getElementById('activityModalMsg').className = 'form-msg';
+
+    activityModal.classList.add('show');
+    searchActivities('');
+  }
+
+  document.getElementById('closeActivityModal').addEventListener('click', () => activityModal.classList.remove('show'));
+  activityModal.addEventListener('click', (e) => { if (e.target === activityModal) activityModal.classList.remove('show'); });
+
+  activitySearchInput.addEventListener('input', () => {
+    clearTimeout(activitySearchDebounce);
+    activitySearchDebounce = setTimeout(() => searchActivities(activitySearchInput.value.trim()), 250);
+  });
+
+  async function searchActivities(q) {
+    try {
+      const { activities } = await apiFetch(`/api/activities?city_id=${activeCityId}&q=${encodeURIComponent(q)}`);
+      activityResults.innerHTML = activities.length
+        ? activities.map(a => `
+            <div class="result-row" data-id="${a.activity_id}" data-title="${escapeHtml(a.title)}" data-cost="${a.estimated_cost}">
+              <div>
+                <div class="title">${escapeHtml(a.title)}</div>
+                <div class="meta"><span class="tag">${escapeHtml(a.category || '')}</span> · ${a.estimated_duration_mins || '—'} min</div>
+              </div>
+              <div class="price">${formatMoney(a.estimated_cost)}</div>
+            </div>`).join('')
+        : `<div class="stop-empty">No matching activities — fill in a custom one below.</div>`;
+
+      activityResults.querySelectorAll('.result-row').forEach(row => {
+        row.addEventListener('click', () => {
+          selectedActivity = { activity_id: Number(row.dataset.id), title: row.dataset.title, cost: Number(row.dataset.cost) };
+          document.getElementById('activityTitle').value = selectedActivity.title;
+          document.getElementById('activityCost').value = selectedActivity.cost;
+        });
+      });
+    } catch (err) {
+      activityResults.innerHTML = `<div class="stop-empty">Search failed: ${escapeHtml(err.message)}</div>`;
+    }
+  }
+
+  document.getElementById('activityTitle').addEventListener('input', () => {
+    // Editing the title manually detaches from the selected catalog activity.
+    selectedActivity = null;
+  });
+
+  document.getElementById('confirmActivityBtn').addEventListener('click', async () => {
+    const msg = document.getElementById('activityModalMsg');
+    const title = document.getElementById('activityTitle').value.trim();
+    const date = document.getElementById('activityDate').value;
+    const time = document.getElementById('activityTime').value;
+    const cost = document.getElementById('activityCost').value;
+
+    if (!selectedActivity && !title) {
+      msg.textContent = 'Pick an activity or enter a title.';
+      msg.className = 'form-msg show error';
+      return;
+    }
+    if (!date) {
+      msg.textContent = 'Choose a date.';
+      msg.className = 'form-msg show error';
+      return;
+    }
+
+    const payload = {
+      scheduled_date: date,
+      start_time: time || null,
+      cost: cost === '' ? 0 : Number(cost),
+    };
+    if (selectedActivity) {
+      payload.activity_id = selectedActivity.activity_id;
+    } else {
+      payload.custom_title = title;
+    }
+
+    try {
+      await apiFetch(`/api/stops/${activeStopId}/activities`, {
+        method: 'POST',
+        body: JSON.stringify(payload),
+      });
+      activityModal.classList.remove('show');
+      loadTrip();
+    } catch (err) {
+      msg.textContent = err.message;
+      msg.className = 'form-msg show error';
+    }
+  });
+</script>
+</body>
+</html>

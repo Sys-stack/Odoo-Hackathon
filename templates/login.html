@@ -350,6 +350,10 @@
   </main>
 
 <script>
+  if (localStorage.getItem('waypoint_token')) {
+    window.location.href = '/dashboard';
+  }
+
   const form = document.getElementById('loginForm');
   const emailInput = document.getElementById('email');
   const passwordInput = document.getElementById('password');
@@ -429,10 +433,13 @@
       if (data.token) {
         localStorage.setItem('waypoint_token', data.token);
       }
+      if (data.user) {
+        localStorage.setItem('waypoint_user', JSON.stringify(data.user));
+      }
 
       showMessage('Signed in. Redirecting…', 'success');
       setTimeout(() => {
-        window.location.href = '/dashboard.html';
+        window.location.href = '/dashboard';
       }, 700);
 
     } catch (err) {
@@ -445,12 +452,13 @@
 
   document.getElementById('signupLink').addEventListener('click', (e) => {
     e.preventDefault();
-    window.location.href = '/signup.html';
+    window.location.href = '/register';
   });
 
   document.getElementById('forgotLink').addEventListener('click', (e) => {
     e.preventDefault();
-    window.location.href = '/forgot-password.html';
+    // Not implemented in this MVP.
+    showMessage("Password reset isn't available yet — contact support for now.", 'error');
   });
 
   document.getElementById('googleBtn').addEventListener('click', () => {
