@@ -74,6 +74,7 @@ function renderNav(active) {
       <a href="/dashboard" class="${active === 'dashboard' ? 'active' : ''}">Dashboard</a>
       <a href="/trips" class="${active === 'trips' ? 'active' : ''}">My Trips</a>
       <a href="/cities" class="${active === 'cities' ? 'active' : ''}">Explore</a>
+      <a href="/estimate" class="${active === 'estimate' ? 'active' : ''}">AI Estimate</a>
       <a href="/trips/new" class="${active === 'new' ? 'active' : ''}">Plan New Trip</a>
       ${isAdmin ? `<a href="/admin" class="${active === 'admin' ? 'active' : ''}">Admin</a>` : ''}
     </div>

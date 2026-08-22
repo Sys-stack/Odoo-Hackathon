@@ -34,6 +34,7 @@ def create_app():
     from budget_routes import budget_bp
     from public_routes import public_bp
     from admin_routes import admin_bp
+    from ai_estimate_routes import ai_bp
 
     app.register_blueprint(auth_bp)
     app.register_blueprint(trips_bp)
@@ -41,6 +42,7 @@ def create_app():
     app.register_blueprint(budget_bp)
     app.register_blueprint(public_bp)
     app.register_blueprint(admin_bp)
+    app.register_blueprint(ai_bp)
 
     register_page_routes(app)
 
@@ -111,6 +113,14 @@ def register_page_routes(app):
     @app.route("/admin")
     def admin_page():
         return render_template("admin.html")
+
+    @app.route("/estimate")
+    def ai_estimate_page():
+        return render_template("ai-estimate.html", trip_id=None)
+
+    @app.route("/trips/<int:trip_id>/estimate")
+    def ai_estimate_trip_page(trip_id):
+        return render_template("ai-estimate.html", trip_id=trip_id)
 
 
 app = create_app()

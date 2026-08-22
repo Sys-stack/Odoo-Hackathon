@@ -1,0 +1,232 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>AI Trip Estimator — Waypoint</title>
+<link rel="stylesheet" href="/static/css/app.css">
+</head>
+<body>
+
+<nav class="topnav" id="topnav"></nav>
+
+<main class="page">
+  <div class="page-head">
+    <div>
+      <h1>AI trip estimator</h1>
+      <p class="sub">Ballpark distance, cost, and travel notes from Gemini — estimates, not live prices.</p>
+    </div>
+  </div>
+
+  <div class="card" style="max-width:720px; margin-bottom:28px;">
+    <div class="form-msg" id="formMsg"></div>
+
+    <div id="tripPickerField" class="field" style="display:none;">
+      <label for="tripSelect">Trip</label>
+      <select id="tripSelect"></select>
+    </div>
+
+    <div id="customRouteFields">
+      <div class="field">
+        <label>Route (in order)</label>
+        <div id="cityRows"></div>
+        <button type="button" class="btn btn-outline btn-sm" id="addCityRowBtn" style="margin-top:4px;">+ Add city</button>
+      </div>
+      <div class="field-row">
+        <div class="field">
+          <label for="startDate">Start date</label>
+          <input type="date" id="startDate">
+        </div>
+        <div class="field">
+          <label for="endDate">End date</label>
+          <input type="date" id="endDate">
+        </div>
+      </div>
+    </div>
+
+    <div class="field-row">
+      <div class="field">
+        <label for="travelers">Travelers</label>
+        <input type="number" id="travelers" min="1" step="1" value="1">
+      </div>
+      <div class="field">
+        <label for="tripStyle">Trip style</label>
+        <select id="tripStyle">
+          <option value="budget">Budget</option>
+          <option value="mid-range" selected>Mid-range</option>
+          <option value="luxury">Luxury</option>
+        </select>
+      </div>
+    </div>
+
+    <button class="btn btn-accent" id="estimateBtn">Get AI estimate</button>
+  </div>
+
+  <div id="resultArea"></div>
+</main>
+
+<script src="/static/js/app.js"></script>
+<script>
+  const TRIP_ID = {{ trip_id | tojson }};
+  let cityRowCount = 0;
+  let lastEstimate = null;
+
+  if (requireAuth()) {
+    renderNav(TRIP_ID ? 'trips' : 'estimate');
+    if (TRIP_ID) {
+      document.getElementById('customRouteFields').style.display = 'none';
+      loadTripContext();
+    } else {
+      document.getElementById('tripPickerField').style.display = 'none';
+      addCityRow();
+      addCityRow();
+      document.getElementById('startDate').value = todayISO();
+    }
+  }
+
+  document.getElementById('addCityRowBtn').addEventListener('click', () => addCityRow());
+
+  function addCityRow(value) {
+    cityRowCount += 1;
+    const id = `cityRow-${cityRowCount}`;
+    const div = document.createElement('div');
+    div.style.cssText = 'display:flex; gap:8px; margin-bottom:8px;';
+    div.innerHTML = `
+      <input type="text" id="${id}" placeholder="e.g. Lisbon, Portugal" style="flex:1; font-family:'Helvetica Neue',Arial,sans-serif; font-size:15px; padding:12px 14px; border:1px solid rgba(15,42,46,0.2); border-radius:4px;" value="${value ? escapeHtml(value) : ''}">
+      <button type="button" class="icon-btn" title="Remove">×</button>
+    `;
+    div.querySelector('button').addEventListener('click', () => {
+      if (document.querySelectorAll('#cityRows > div').length > 2) div.remove();
+    });
+    document.getElementById('cityRows').appendChild(div);
+  }
+
+  async function loadTripContext() {
+    try {
+      const { trip } = await apiFetch(`/api/trips/${TRIP_ID}`);
+      document.getElementById('estimateBtn').textContent = `Get AI estimate for "${trip.trip_name}"`;
+      if (!trip.stops.length) {
+        showMessage('This trip has no stops yet — add some in the itinerary builder first.', 'error');
+        document.getElementById('estimateBtn').disabled = true;
+      }
+    } catch (err) {
+      showMessage(`Couldn't load this trip: ${err.message}`, 'error');
+      document.getElementById('estimateBtn').disabled = true;
+    }
+  }
+
+  function showMessage(text, type) {
+    const el = document.getElementById('formMsg');
+    el.textContent = text;
+    el.className = `form-msg show ${type}`;
+  }
+
+  document.getElementById('estimateBtn').addEventListener('click', async () => {
+    const btn = document.getElementById('estimateBtn');
+    document.getElementById('formMsg').className = 'form-msg';
+
+    const travelers = Number(document.getElementById('travelers').value || 1);
+    const tripStyle = document.getElementById('tripStyle').value;
+
+    const payload = { travelers, trip_style: tripStyle };
+
+    if (TRIP_ID) {
+      payload.trip_id = TRIP_ID;
+    } else {
+      const cities = [...document.querySelectorAll('#cityRows input')].map(i => i.value.trim()).filter(Boolean);
+      const startDate = document.getElementById('startDate').value;
+      const endDate = document.getElementById('endDate').value;
+      if (cities.length < 2) {
+        showMessage('Add at least 2 cities.', 'error');
+        return;
+      }
+      if (!startDate || !endDate || endDate < startDate) {
+        showMessage('Pick a valid date range.', 'error');
+        return;
+      }
+      payload.cities = cities;
+      payload.start_date = startDate;
+      payload.end_date = endDate;
+    }
+
+    btn.disabled = true;
+    btn.textContent = 'Asking Gemini…';
+    document.getElementById('resultArea').innerHTML = '<div class="loading">Estimating your trip…</div>';
+
+    try {
+      const { estimate } = await apiFetch('/api/ai/estimate', { method: 'POST', body: JSON.stringify(payload) });
+      lastEstimate = estimate;
+      renderEstimate(estimate);
+    } catch (err) {
+      document.getElementById('resultArea').innerHTML = '';
+      showMessage(err.message, 'error');
+    } finally {
+      btn.disabled = false;
+      btn.textContent = TRIP_ID ? 'Get AI estimate' : 'Get AI estimate';
+    }
+  });
+
+  function renderEstimate(est) {
+    const cost = est.cost_estimate_usd;
+    const categories = ['transport', 'stay', 'food', 'activities', 'misc'];
+    const maxVal = Math.max(...categories.map(c => cost[c] || 0), 1);
+
+    document.getElementById('resultArea').innerHTML = `
+      <div class="stat-grid">
+        <div class="stat-card"><div class="label">Total distance</div><div class="value">${Math.round(est.total_distance_km).toLocaleString()} km</div></div>
+        <div class="stat-card"><div class="label">Estimated total cost</div><div class="value">${formatMoney(cost.total)}</div></div>
+        <div class="stat-card"><div class="label">Avg / day / traveler</div><div class="value">${formatMoney(est.average_daily_cost_per_traveler_usd)}</div></div>
+        <div class="stat-card"><div class="label">Trip length</div><div class="value">${est.num_days} days</div></div>
+      </div>
+
+      <div class="card" style="margin-bottom:24px;">
+        <h3 style="font-size:16px; margin-bottom:16px;">Cost breakdown</h3>
+        <div class="bar-chart">
+          ${categories.map(c => `
+            <div class="bar-row">
+              <div class="cat-label">${c}</div>
+              <div class="bar-track"><div class="bar-fill" style="width:${((cost[c] || 0) / maxVal) * 100}%; background:${categoryColor(c === 'stay' ? 'stay' : c === 'food' ? 'meals' : c)};"></div></div>
+              <div class="amt">${formatMoney(cost[c] || 0)}</div>
+            </div>`).join('')}
+        </div>
+        ${TRIP_ID ? `<button class="btn btn-outline btn-sm" id="saveBudgetBtn" style="margin-top:18px;">Save ${formatMoney(cost.total)} as this trip's budget</button>` : ''}
+      </div>
+
+      <div class="card" style="margin-bottom:24px;">
+        <h3 style="font-size:16px; margin-bottom:16px;">Leg-by-leg distance</h3>
+        <div class="bar-chart">
+          ${est.legs.map(leg => `
+            <div class="bar-row" style="grid-template-columns: 1fr 90px;">
+              <div class="cat-label" style="text-transform:none;">${escapeHtml(leg.from_city)} → ${escapeHtml(leg.to_city)} <span class="tag" style="margin-left:6px;">${escapeHtml(leg.typical_transport)}</span></div>
+              <div class="amt">${Math.round(leg.distance_km).toLocaleString()} km</div>
+            </div>`).join('')}
+        </div>
+      </div>
+
+      <div class="card" style="margin-bottom:24px;">
+        <h3 style="font-size:16px; margin-bottom:10px;">Best time to visit</h3>
+        <p class="sans" style="font-size:13.5px; line-height:1.6;">${escapeHtml(est.best_time_to_visit)}</p>
+      </div>
+
+      <div class="card">
+        <h3 style="font-size:16px; margin-bottom:12px;">Travel tips</h3>
+        <ul class="sans" style="font-size:13.5px; line-height:1.9; padding-left:20px;">
+          ${est.travel_tips.map(t => `<li>${escapeHtml(t)}</li>`).join('')}
+        </ul>
+      </div>
+    `;
+
+    if (TRIP_ID) {
+      document.getElementById('saveBudgetBtn').addEventListener('click', async () => {
+        try {
+          await apiFetch(`/api/trips/${TRIP_ID}`, { method: 'PUT', body: JSON.stringify({ total_budget: cost.total }) });
+          document.getElementById('saveBudgetBtn').textContent = 'Saved!';
+        } catch (err) {
+          alert(`Couldn't save: ${err.message}`);
+        }
+      });
+    }
+  }
+</script>
+</body>
+</html>

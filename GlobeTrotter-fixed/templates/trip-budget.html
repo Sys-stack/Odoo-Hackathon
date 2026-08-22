@@ -20,6 +20,7 @@
     <div style="display:flex; gap:10px; align-items:center;">
       <a class="btn btn-outline" id="viewLink" href="#">View itinerary</a>
       <a class="btn btn-outline" id="planLink" href="#">Edit plan</a>
+      <a class="btn btn-outline" id="estimateLink" href="#">AI estimate</a>
     </div>
   </div>
 
@@ -107,6 +108,7 @@
     renderNav('trips');
     document.getElementById('viewLink').href = `/trips/${TRIP_ID}`;
     document.getElementById('planLink').href = `/trips/${TRIP_ID}/plan`;
+    document.getElementById('estimateLink').href = `/trips/${TRIP_ID}/estimate`;
     loadAll();
   }
 
