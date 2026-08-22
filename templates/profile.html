@@ -1,0 +1,57 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>GlobalTrotter - Profile</title>
+  <style>
+    body { font-family: sans-serif; background: #121212; color: #f0f0f0; margin: 20px; }
+    .header-box { display: flex; gap: 20px; border: 1px solid #444; padding: 20px; border-radius: 8px; margin-bottom: 24px; }
+    .avatar { width: 90px; height: 90px; border-radius: 50%; border: 2px solid #666; object-fit: cover; }
+    .grid { display: flex; gap: 16px; flex-wrap: wrap; margin-bottom: 24px; }
+    .card { border: 1px solid #444; border-radius: 8px; width: 140px; height: 180px; display: flex; flex-direction: column; justify-content: space-between; padding: 12px; }
+    .btn-view { display: block; text-align: center; border: 1px solid #888; color: #fff; text-decoration: none; padding: 6px; border-radius: 4px; }
+    .btn-view:hover { background: #333; }
+  </style>
+</head>
+<body>
+  <h2>GlobalTrotter</h2>
+
+  <!-- Profile Header -->
+  <div class="header-box">
+    <img src="{{ user.profile_picture_url or 'https://via.placeholder.com/90' }}" class="avatar" alt="Avatar">
+    <div>
+      <h3>{{ user.full_name or user.email }}</h3>
+      <p>Email: {{ user.email }} | Language: {{ user.language_preference }}</p>
+      <button>Edit Info</button>
+    </div>
+  </div>
+
+  <!-- Preplanned Trips -->
+  <h3>Preplanned Trips</h3>
+  <div class="grid">
+    {% for trip in preplanned_trips %}
+      <div class="card">
+        <strong>{{ trip.trip_name }}</strong>
+        <small>{{ trip.start_date.strftime('%b %d, %Y') }}</small>
+        <a href="{{ url_for('trip_itinerary', trip_id=trip.trip_id) }}" class="btn-view">View</a>
+      </div>
+    {% else %}
+      <p>No upcoming trips found.</p>
+    {% endfor %}
+  </div>
+
+  <!-- Previous Trips -->
+  <h3>Previous Trips</h3>
+  <div class="grid">
+    {% for trip in previous_trips %}
+      <div class="card">
+        <strong>{{ trip.trip_name }}</strong>
+        <small>{{ trip.start_date.strftime('%b %d, %Y') }}</small>
+        <a href="{{ url_for('trip_itinerary', trip_id=trip.trip_id) }}" class="btn-view">View</a>
+      </div>
+    {% else %}
+      <p>No past trips found.</p>
+    {% endfor %}
+  </div>
+</body>
+</html>
