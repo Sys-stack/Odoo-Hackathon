@@ -1,0 +1,504 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Create account — GlobeTrotter</title>
+<style>
+  :root{
+    --ink:#0F2A2E;
+    --paper:#F4EFE6;
+    --teal:#123B40;
+    --teal-deep:#0B2226;
+    --sun:#E8823C;
+    --sun-soft:#F3B26B;
+    --line: rgba(244,239,230,0.16);
+    --error:#E4573D;
+    --ok:#3E7C5A;
+    --radius: 4px;
+  }
+
+  *{ box-sizing:border-box; margin:0; padding:0; }
+
+  body{
+    font-family: 'Iowan Old Style', 'Georgia', serif;
+    background:var(--paper);
+    color:var(--ink);
+    min-height:100vh;
+    display:grid;
+    grid-template-columns: 1.1fr 1fr;
+  }
+
+  @media (max-width: 860px){
+    body{ grid-template-columns: 1fr; }
+    .side{ display:none; }
+  }
+
+  /* LEFT: route panel */
+  .side{
+    background: var(--teal-deep);
+    color: var(--paper);
+    position:relative;
+    overflow:hidden;
+    padding: 56px 48px;
+    display:flex;
+    flex-direction:column;
+    justify-content:space-between;
+  }
+
+  .side::before{
+    content:"";
+    position:absolute;
+    inset:0;
+    background-image:
+      radial-gradient(circle at 20% 30%, rgba(232,130,60,0.16), transparent 40%),
+      radial-gradient(circle at 80% 75%, rgba(232,130,60,0.10), transparent 45%);
+    pointer-events:none;
+  }
+
+  .brand{
+    font-size: 14px;
+    letter-spacing: 0.22em;
+    text-transform: uppercase;
+    font-family: 'Helvetica Neue', Arial, sans-serif;
+    font-weight: 600;
+    color: var(--sun-soft);
+    z-index:1;
+  }
+
+  .route{ z-index:1; }
+
+  .route h1{
+    font-size: clamp(34px, 4vw, 52px);
+    line-height:1.05;
+    font-weight: 500;
+    max-width: 10ch;
+    margin-bottom: 28px;
+  }
+
+  .route h1 em{ font-style: italic; color: var(--sun-soft); }
+
+  .perks{
+    display:flex;
+    flex-direction:column;
+    font-family: 'Helvetica Neue', Arial, sans-serif;
+    font-size: 13px;
+  }
+
+  .perk{
+    display:grid;
+    grid-template-columns: 14px 1fr;
+    align-items:center;
+    gap: 14px;
+    padding: 12px 0;
+    border-top: 1px solid var(--line);
+    color: rgba(244,239,230,0.75);
+  }
+  .perk:last-child{ border-bottom: 1px solid var(--line); }
+
+  .dot{ width:7px; height:7px; border-radius:50%; background: var(--sun-soft); }
+
+  .side-foot{
+    z-index:1;
+    font-family: 'Helvetica Neue', Arial, sans-serif;
+    font-size: 12px;
+    color: rgba(244,239,230,0.4);
+    letter-spacing:0.02em;
+  }
+
+  /* RIGHT: form panel */
+  .panel{
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    padding: 40px 24px;
+  }
+
+  .form-wrap{ width:100%; max-width: 380px; }
+
+  .form-wrap h2{ font-size: 30px; font-weight: 500; margin-bottom: 6px; }
+
+  .sub{
+    font-family: 'Helvetica Neue', Arial, sans-serif;
+    font-size: 14px;
+    color: rgba(15,42,46,0.6);
+    margin-bottom: 30px;
+  }
+
+  .sub a{ color: var(--sun); text-decoration:none; font-weight:600; }
+  .sub a:hover{ text-decoration:underline; }
+
+  form{ display:flex; flex-direction:column; gap: 16px; }
+
+  .field{ display:flex; flex-direction:column; gap:6px; }
+
+  .field label{
+    font-family: 'Helvetica Neue', Arial, sans-serif;
+    font-size: 11px;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: rgba(15,42,46,0.55);
+  }
+
+  .field input{
+    font-family: 'Helvetica Neue', Arial, sans-serif;
+    font-size: 15px;
+    padding: 13px 14px;
+    border: 1px solid rgba(15,42,46,0.2);
+    border-radius: var(--radius);
+    background: #fff;
+    color: var(--ink);
+    outline:none;
+    transition: border-color .15s ease, box-shadow .15s ease;
+  }
+
+  .field input:focus{
+    border-color: var(--sun);
+    box-shadow: 0 0 0 3px rgba(232,130,60,0.15);
+  }
+
+  .field input.invalid{ border-color: var(--error); }
+
+  .field-error{
+    font-family: 'Helvetica Neue', Arial, sans-serif;
+    font-size: 12px;
+    color: var(--error);
+    min-height: 14px;
+    display:none;
+  }
+  .field-error.show{ display:block; }
+
+  /* password strength */
+  .strength{
+    display:flex;
+    gap: 5px;
+    margin-top: 2px;
+  }
+  .strength span{
+    height: 3px;
+    flex:1;
+    background: rgba(15,42,46,0.12);
+    border-radius: 2px;
+    transition: background .15s ease;
+  }
+  .strength-label{
+    font-family: 'Helvetica Neue', Arial, sans-serif;
+    font-size: 11px;
+    color: rgba(15,42,46,0.45);
+    margin-top: 2px;
+  }
+
+  .terms{
+    display:flex;
+    align-items:flex-start;
+    gap: 9px;
+    font-family: 'Helvetica Neue', Arial, sans-serif;
+    font-size: 12.5px;
+    color: rgba(15,42,46,0.65);
+    line-height:1.5;
+  }
+  .terms input{ accent-color: var(--sun); width:14px; height:14px; margin-top:2px; flex-shrink:0; }
+  .terms a{ color: var(--teal); font-weight:600; text-decoration:none; }
+  .terms a:hover{ text-decoration:underline; }
+
+  .submit{
+    margin-top: 4px;
+    background: var(--teal);
+    color: var(--paper);
+    border:none;
+    border-radius: var(--radius);
+    padding: 14px;
+    font-family: 'Helvetica Neue', Arial, sans-serif;
+    font-size: 14px;
+    font-weight:600;
+    letter-spacing: 0.03em;
+    text-transform: uppercase;
+    cursor:pointer;
+    transition: background .15s ease, transform .1s ease;
+  }
+  .submit:hover{ background: var(--teal-deep); }
+  .submit:active{ transform: translateY(1px); }
+  .submit:disabled{ opacity: 0.6; cursor: default; }
+
+  .form-msg{
+    font-family: 'Helvetica Neue', Arial, sans-serif;
+    font-size: 13px;
+    padding: 10px 12px;
+    border-radius: var(--radius);
+    display:none;
+  }
+  .form-msg.show{ display:block; }
+  .form-msg.error{
+    background: rgba(228,87,61,0.1);
+    color: var(--error);
+    border: 1px solid rgba(228,87,61,0.25);
+  }
+  .form-msg.success{
+    background: rgba(62,124,90,0.1);
+    color: var(--ok);
+    border: 1px solid rgba(62,124,90,0.25);
+  }
+
+  .divider{
+    display:flex;
+    align-items:center;
+    gap:12px;
+    margin: 22px 0;
+    font-family: 'Helvetica Neue', Arial, sans-serif;
+    font-size: 12px;
+    color: rgba(15,42,46,0.4);
+    text-transform:uppercase;
+    letter-spacing: 0.1em;
+  }
+  .divider::before, .divider::after{
+    content:"";
+    flex:1;
+    height:1px;
+    background: rgba(15,42,46,0.15);
+  }
+
+  .alt{
+    width:100%;
+    padding: 12px;
+    border: 1px solid rgba(15,42,46,0.2);
+    border-radius: var(--radius);
+    background: #fff;
+    font-family: 'Helvetica Neue', Arial, sans-serif;
+    font-size: 14px;
+    cursor:pointer;
+    color: var(--ink);
+    transition: border-color .15s ease, background .15s ease;
+  }
+  .alt:hover{ border-color: var(--ink); background: #fbf9f5; }
+</style>
+</head>
+<body>
+
+  <aside class="side">
+    <div class="brand">GlobeTrotter</div>
+    <div class="route">
+      <h1>Every trip starts with <em>one stop</em>.</h1>
+      <div class="perks">
+        <div class="perk"><span class="dot"></span><span>Build multi-city itineraries in minutes</span></div>
+        <div class="perk"><span class="dot"></span><span>Track budgets against real spend</span></div>
+        <div class="perk"><span class="dot"></span><span>Share trips with a single link</span></div>
+      </div>
+    </div>
+    <div class="side-foot">Free to join. No credit card required.</div>
+  </aside>
+
+  <main class="panel">
+    <div class="form-wrap">
+      <h2>Create your account</h2>
+      <p class="sub">Already have one? <a href="/login">Sign in</a></p>
+
+      <div class="form-msg" id="formMsg"></div>
+
+      <form id="registerForm" novalidate>
+        <div class="field">
+          <label for="fullName">Full name</label>
+          <input type="text" id="fullName" name="fullName" placeholder="Jordan Ellis" autocomplete="name" required>
+          <span class="field-error" id="fullNameError">Enter your name.</span>
+        </div>
+
+        <div class="field">
+          <label for="email">Email</label>
+          <input type="email" id="email" name="email" placeholder="you@example.com" autocomplete="email" required>
+          <span class="field-error" id="emailError">Enter a valid email address.</span>
+        </div>
+
+        <div class="field">
+          <label for="password">Password</label>
+          <input type="password" id="password" name="password" placeholder="Min. 8 characters" autocomplete="new-password" required>
+          <div class="strength" id="strengthBar">
+            <span></span><span></span><span></span><span></span>
+          </div>
+          <span class="strength-label" id="strengthLabel">&nbsp;</span>
+          <span class="field-error" id="passwordError">Password must be at least 8 characters.</span>
+        </div>
+
+        <div class="field">
+          <label for="confirmPassword">Confirm password</label>
+          <input type="password" id="confirmPassword" name="confirmPassword" placeholder="Re-enter password" autocomplete="new-password" required>
+          <span class="field-error" id="confirmPasswordError">Passwords don't match.</span>
+        </div>
+
+        <label class="terms">
+          <input type="checkbox" id="terms" name="terms">
+          <span>I agree to the <a href="#">Terms of Service</a> and <a href="#">Privacy Policy</a></span>
+        </label>
+        <span class="field-error" id="termsError">You must accept the terms to continue.</span>
+
+        <button type="submit" class="submit" id="submitBtn">Create account</button>
+      </form>
+
+      <div class="divider">or</div>
+      <button type="button" class="alt" id="googleBtn">Continue with Google</button>
+    </div>
+  </main>
+
+<script>
+  if (localStorage.getItem('waypoint_token')) {
+    window.location.href = '/dashboard';
+  }
+
+  const form = document.getElementById('registerForm');
+  const fullNameInput = document.getElementById('fullName');
+  const emailInput = document.getElementById('email');
+  const passwordInput = document.getElementById('password');
+  const confirmInput = document.getElementById('confirmPassword');
+  const termsInput = document.getElementById('terms');
+
+  const fullNameError = document.getElementById('fullNameError');
+  const emailError = document.getElementById('emailError');
+  const passwordError = document.getElementById('passwordError');
+  const confirmPasswordError = document.getElementById('confirmPasswordError');
+  const termsError = document.getElementById('termsError');
+
+  const strengthBar = document.getElementById('strengthBar');
+  const strengthLabel = document.getElementById('strengthLabel');
+  const formMsg = document.getElementById('formMsg');
+  const submitBtn = document.getElementById('submitBtn');
+
+  function isValidEmail(value) {
+    return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value);
+  }
+
+  function setFieldState(input, errorEl, valid) {
+    input.classList.toggle('invalid', !valid);
+    errorEl.classList.toggle('show', !valid);
+  }
+
+  function showMessage(text, type) {
+    formMsg.textContent = text;
+    formMsg.className = `form-msg show ${type}`;
+  }
+
+  function clearMessage() {
+    formMsg.className = 'form-msg';
+    formMsg.textContent = '';
+  }
+
+  function scorePassword(value) {
+    let score = 0;
+    if (value.length >= 8) score++;
+    if (/[A-Z]/.test(value) && /[a-z]/.test(value)) score++;
+    if (/\d/.test(value)) score++;
+    if (/[^A-Za-z0-9]/.test(value)) score++;
+    return score;
+  }
+
+  function updateStrength(value) {
+    const bars = strengthBar.querySelectorAll('span');
+    const score = value.length === 0 ? 0 : Math.max(1, scorePassword(value));
+    const colors = ['#E4573D', '#E8823C', '#F3B26B', '#3E7C5A'];
+    const labels = ['Weak', 'Fair', 'Good', 'Strong'];
+
+    bars.forEach((bar, i) => {
+      bar.style.background = i < score ? colors[score - 1] : 'rgba(15,42,46,0.12)';
+    });
+
+    strengthLabel.textContent = value.length === 0 ? '\u00A0' : labels[score - 1];
+  }
+
+  passwordInput.addEventListener('input', () => {
+    updateStrength(passwordInput.value);
+    if (passwordInput.classList.contains('invalid')) {
+      setFieldState(passwordInput, passwordError, passwordInput.value.length >= 8);
+    }
+  });
+
+  emailInput.addEventListener('input', () => {
+    if (emailInput.classList.contains('invalid')) {
+      setFieldState(emailInput, emailError, isValidEmail(emailInput.value.trim()));
+    }
+  });
+
+  fullNameInput.addEventListener('input', () => {
+    if (fullNameInput.classList.contains('invalid')) {
+      setFieldState(fullNameInput, fullNameError, fullNameInput.value.trim().length > 0);
+    }
+  });
+
+  confirmInput.addEventListener('input', () => {
+    if (confirmInput.classList.contains('invalid')) {
+      setFieldState(confirmInput, confirmPasswordError, confirmInput.value === passwordInput.value);
+    }
+  });
+
+  form.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    clearMessage();
+
+    const fullName = fullNameInput.value.trim();
+    const email = emailInput.value.trim();
+    const password = passwordInput.value;
+    const confirmPassword = confirmInput.value;
+
+    const fullNameValid = fullName.length > 0;
+    const emailValid = isValidEmail(email);
+    const passwordValid = password.length >= 8;
+    const confirmValid = confirmPassword === password && confirmPassword.length > 0;
+    const termsValid = termsInput.checked;
+
+    setFieldState(fullNameInput, fullNameError, fullNameValid);
+    setFieldState(emailInput, emailError, emailValid);
+    setFieldState(passwordInput, passwordError, passwordValid);
+    setFieldState(confirmInput, confirmPasswordError, confirmValid);
+    termsError.classList.toggle('show', !termsValid);
+
+    if (!fullNameValid || !emailValid || !passwordValid || !confirmValid || !termsValid) {
+      showMessage('Fix the highlighted fields and try again.', 'error');
+      return;
+    }
+
+    submitBtn.disabled = true;
+    submitBtn.textContent = 'Creating account…';
+
+    try {
+      // Replace with your real registration endpoint.
+      // Maps to the Users table: full_name, email, password (hashed server-side into password_hash)
+      const response = await fetch('/api/auth/register', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ full_name: fullName, email, password })
+      });
+
+      if (!response.ok) {
+        const data = await response.json().catch(() => ({}));
+        // Common case: email already registered (Users.email is UNIQUE)
+        throw new Error(data.message || 'Could not create account. That email may already be registered.');
+      }
+
+      const data = await response.json();
+      // Expected: { token, user: { user_id, email, full_name, role, ... } }
+      if (data.token) {
+        localStorage.setItem('waypoint_token', data.token);
+      }
+      if (data.user) {
+        localStorage.setItem('waypoint_user', JSON.stringify(data.user));
+      }
+
+      showMessage('Account created. Redirecting…', 'success');
+      const next = new URLSearchParams(window.location.search).get('next');
+      const redirectTo = (next && next.startsWith('/') && !next.startsWith('//')) ? next : '/dashboard';
+      setTimeout(() => {
+        window.location.href = redirectTo;
+      }, 900);
+
+    } catch (err) {
+      showMessage(err.message || 'Something went wrong. Please try again.', 'error');
+    } finally {
+      submitBtn.disabled = false;
+      submitBtn.textContent = 'Create account';
+    }
+  });
+
+  document.getElementById('googleBtn').addEventListener('click', () => {
+    // Not implemented in this MVP — no backend OAuth route exists yet.
+    showMessage("Google sign-up isn't available yet — use email and password for now.", 'error');
+  });
+</script>
+
+</body>
+</html>

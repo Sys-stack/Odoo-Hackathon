@@ -1,0 +1,243 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Calendar — Waypoint</title>
+<link rel="stylesheet" href="/static/css/app.css">
+</head>
+<body>
+
+<nav class="topnav" id="topnav"></nav>
+
+<main class="page">
+  <div class="page-head">
+    <div>
+      <p class="sub"><a href="/trips">← My Trips</a></p>
+      <h1 id="tripName">Loading…</h1>
+      <p class="sub">Drag activities to reorder within a day. Click one to edit or remove it.</p>
+    </div>
+    <div style="display:flex; gap:10px;">
+      <a class="btn btn-outline" id="viewLink" href="#">List view</a>
+      <a class="btn btn-outline" id="planLink" href="#">Edit plan</a>
+    </div>
+  </div>
+
+  <div id="calendarArea">
+    <div class="loading">Loading calendar…</div>
+  </div>
+</main>
+
+<!-- Quick edit modal -->
+<div class="modal-overlay" id="editModal">
+  <div class="modal">
+    <div class="modal-head">
+      <h3>Edit activity</h3>
+      <button class="modal-close" id="closeEditModal">&times;</button>
+    </div>
+    <div class="field">
+      <label for="editTitle">Title</label>
+      <input type="text" id="editTitle">
+    </div>
+    <div class="field-row">
+      <div class="field">
+        <label for="editTime">Time <span style="text-transform:none; letter-spacing:0;">(optional)</span></label>
+        <input type="time" id="editTime">
+      </div>
+      <div class="field">
+        <label for="editCost">Cost ($)</label>
+        <input type="number" id="editCost" min="0" step="1">
+      </div>
+    </div>
+    <div class="form-msg" id="editModalMsg"></div>
+    <div style="display:flex; gap:10px;">
+      <button class="btn btn-accent" id="saveEditBtn">Save changes</button>
+      <button class="btn btn-danger" id="deleteEditBtn">Remove</button>
+    </div>
+  </div>
+</div>
+
+<script src="/static/js/app.js"></script>
+<script>
+  const TRIP_ID = {{ trip_id }};
+  let trip = null;
+  let editingId = null;
+  let dragSourceId = null;
+
+  if (requireAuth()) {
+    renderNav('trips');
+    document.getElementById('viewLink').href = `/trips/${TRIP_ID}`;
+    document.getElementById('planLink').href = `/trips/${TRIP_ID}/plan`;
+    loadTrip();
+  }
+
+  async function loadTrip() {
+    const area = document.getElementById('calendarArea');
+    try {
+      const { trip: t } = await apiFetch(`/api/trips/${TRIP_ID}`);
+      trip = t;
+      document.getElementById('tripName').textContent = trip.trip_name;
+      renderCalendar();
+    } catch (err) {
+      area.innerHTML = `<div class="empty">Couldn't load this trip: ${escapeHtml(err.message)}</div>`;
+    }
+  }
+
+  /** Builds a day -> { city, activities[] } map spanning the whole trip. */
+  function buildDayMap() {
+    const map = {};
+    let d = new Date(trip.start_date + 'T00:00:00');
+    const end = new Date(trip.end_date + 'T00:00:00');
+    while (d <= end) {
+      const iso = d.toISOString().slice(0, 10);
+      const stop = trip.stops.find(s => iso >= s.arrival_date && iso <= s.departure_date);
+      map[iso] = { city: stop ? stop.city : null, activities: [] };
+      d.setDate(d.getDate() + 1);
+    }
+    trip.stops.forEach(s => {
+      s.activities.forEach(a => {
+        if (map[a.scheduled_date]) map[a.scheduled_date].activities.push(a);
+      });
+    });
+    Object.values(map).forEach(day => {
+      day.activities.sort((a, b) => (a.display_order || 0) - (b.display_order || 0));
+    });
+    return map;
+  }
+
+  function renderCalendar() {
+    const area = document.getElementById('calendarArea');
+    if (!trip.stops.length) {
+      area.innerHTML = `
+        <div class="empty">
+          <h3>No itinerary yet</h3>
+          <p>Add stops and activities in the builder first.</p>
+          <div style="margin-top:16px;"><a href="/trips/${TRIP_ID}/plan" class="btn btn-primary">Build itinerary</a></div>
+        </div>`;
+      return;
+    }
+
+    const dayMap = buildDayMap();
+    area.innerHTML = Object.entries(dayMap).map(([date, day]) => `
+      <div class="calendar-day">
+        <div class="calendar-day-head">
+          <span class="date">${formatDate(date)}</span>
+          <span class="city">${day.city ? escapeHtml(day.city.city_name) + ', ' + escapeHtml(day.city.country) : 'No stop scheduled'}</span>
+        </div>
+        <div class="day-drop" data-date="${date}">
+          ${day.activities.length
+            ? day.activities.map(a => chipHtml(a)).join('')
+            : `<div class="calendar-empty-day">Nothing planned this day.</div>`}
+        </div>
+      </div>`).join('');
+
+    wireDragAndDrop();
+    area.querySelectorAll('[data-open]').forEach(el => {
+      el.addEventListener('click', () => openEditModal(el.dataset.open));
+    });
+  }
+
+  function chipHtml(a) {
+    return `
+      <div class="calendar-chip" draggable="true" data-id="${a.itinerary_activity_id}" data-open="${a.itinerary_activity_id}">
+        <div>
+          <span class="drag-handle">⠿</span>
+          <strong>${escapeHtml(a.title || 'Untitled')}</strong>
+          <span class="meta" style="color:rgba(15,42,46,0.5); margin-left:8px;">${a.start_time || 'no time set'} · <span class="tag">${escapeHtml(a.category || 'custom')}</span></span>
+        </div>
+        <span class="cost">${formatMoney(a.cost)}</span>
+      </div>`;
+  }
+
+  function wireDragAndDrop() {
+    document.querySelectorAll('.calendar-chip').forEach(chip => {
+      chip.addEventListener('dragstart', (e) => {
+        dragSourceId = chip.dataset.id;
+        chip.classList.add('dragging');
+        e.dataTransfer.effectAllowed = 'move';
+      });
+      chip.addEventListener('dragend', () => chip.classList.remove('dragging'));
+    });
+
+    document.querySelectorAll('.day-drop').forEach(dropZone => {
+      dropZone.addEventListener('dragover', (e) => {
+        e.preventDefault();
+        const dragging = dropZone.querySelector('.dragging');
+        const afterEl = [...dropZone.querySelectorAll('.calendar-chip:not(.dragging)')]
+          .find(el => e.clientY < el.getBoundingClientRect().top + el.getBoundingClientRect().height / 2);
+        if (!dragging || dragging.parentElement !== dropZone) return; // only within the same day
+        if (afterEl) dropZone.insertBefore(dragging, afterEl);
+        else dropZone.appendChild(dragging);
+      });
+
+      dropZone.addEventListener('drop', async (e) => {
+        e.preventDefault();
+        const ids = [...dropZone.querySelectorAll('.calendar-chip')].map(el => el.dataset.id);
+        try {
+          await Promise.all(ids.map((id, i) =>
+            apiFetch(`/api/itinerary-activities/${id}`, {
+              method: 'PUT',
+              body: JSON.stringify({ display_order: i + 1 }),
+            })));
+          await loadTrip();
+        } catch (err) {
+          alert(`Couldn't save new order: ${err.message}`);
+          loadTrip();
+        }
+      });
+    });
+  }
+
+  /* ---------- Quick edit modal ---------- */
+  const editModal = document.getElementById('editModal');
+
+  function openEditModal(iaId) {
+    let found = null;
+    trip.stops.forEach(s => s.activities.forEach(a => {
+      if (String(a.itinerary_activity_id) === String(iaId)) found = a;
+    }));
+    if (!found) return;
+
+    editingId = iaId;
+    document.getElementById('editTitle').value = found.title || '';
+    document.getElementById('editTime').value = found.start_time || '';
+    document.getElementById('editCost').value = found.cost || 0;
+    document.getElementById('editModalMsg').className = 'form-msg';
+    editModal.classList.add('show');
+  }
+
+  document.getElementById('closeEditModal').addEventListener('click', () => editModal.classList.remove('show'));
+  editModal.addEventListener('click', (e) => { if (e.target === editModal) editModal.classList.remove('show'); });
+
+  document.getElementById('saveEditBtn').addEventListener('click', async () => {
+    const msg = document.getElementById('editModalMsg');
+    try {
+      await apiFetch(`/api/itinerary-activities/${editingId}`, {
+        method: 'PUT',
+        body: JSON.stringify({
+          custom_title: document.getElementById('editTitle').value.trim(),
+          start_time: document.getElementById('editTime').value || null,
+          cost: Number(document.getElementById('editCost').value || 0),
+        }),
+      });
+      editModal.classList.remove('show');
+      loadTrip();
+    } catch (err) {
+      msg.textContent = err.message;
+      msg.className = 'form-msg show error';
+    }
+  });
+
+  document.getElementById('deleteEditBtn').addEventListener('click', async () => {
+    if (!confirm('Remove this activity?')) return;
+    try {
+      await apiFetch(`/api/itinerary-activities/${editingId}`, { method: 'DELETE' });
+      editModal.classList.remove('show');
+      loadTrip();
+    } catch (err) {
+      alert(`Couldn't remove: ${err.message}`);
+    }
+  });
+</script>
+</body>
+</html>

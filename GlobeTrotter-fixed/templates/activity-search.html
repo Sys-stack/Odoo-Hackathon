@@ -1,0 +1,221 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Activities — Waypoint</title>
+<link rel="stylesheet" href="/static/css/app.css">
+</head>
+<body>
+
+<nav class="topnav" id="topnav"></nav>
+
+<main class="page">
+  <div class="page-head">
+    <div>
+      <h1 id="pageTitle">Explore activities</h1>
+      <p class="sub" id="countSub"></p>
+    </div>
+  </div>
+
+  <div id="noCityMsg" class="empty" style="display:none;">
+    <h3>Pick a city first</h3>
+    <p>Activity search is scoped to one city at a time.</p>
+    <div style="margin-top:16px;"><a href="/cities" class="btn btn-primary">Browse cities</a></div>
+  </div>
+
+  <div id="searchWrap" style="display:none;">
+    <div class="filter-bar">
+      <input type="text" id="searchInput" placeholder="Search activities…">
+      <select id="categoryFilter"><option value="">All categories</option></select>
+      <select id="costFilter">
+        <option value="">Any cost</option>
+        <option value="0-0">Free</option>
+        <option value="0-25">Under $25</option>
+        <option value="25-75">$25–$75</option>
+        <option value="75-99999">$75+</option>
+      </select>
+      <select id="durationFilter">
+        <option value="">Any duration</option>
+        <option value="0-60">Under 1 hr</option>
+        <option value="60-180">1–3 hrs</option>
+        <option value="180-99999">3+ hrs</option>
+      </select>
+    </div>
+
+    <div id="resultsArea" class="grid">
+      <div class="loading">Loading activities…</div>
+    </div>
+  </div>
+</main>
+
+<!-- Add to Itinerary modal (only used when arriving with a stop_id) -->
+<div class="modal-overlay" id="addModal">
+  <div class="modal">
+    <div class="modal-head">
+      <h3>Add to itinerary</h3>
+      <button class="modal-close" id="closeAddModal">&times;</button>
+    </div>
+    <p class="sans" style="font-size:14px; margin-bottom:16px;" id="addActivityLabel"></p>
+    <div class="field-row">
+      <div class="field">
+        <label for="scheduleDate">Date</label>
+        <input type="date" id="scheduleDate">
+      </div>
+      <div class="field">
+        <label for="scheduleTime">Time <span style="text-transform:none; letter-spacing:0;">(optional)</span></label>
+        <input type="time" id="scheduleTime">
+      </div>
+    </div>
+    <div class="field">
+      <label for="scheduleCost">Cost ($)</label>
+      <input type="number" id="scheduleCost" min="0" step="1">
+    </div>
+    <div class="form-msg" id="addModalMsg"></div>
+    <button class="btn btn-accent" id="confirmAddBtn">Add to itinerary</button>
+  </div>
+</div>
+
+<script src="/static/js/app.js"></script>
+<script>
+  const params = new URLSearchParams(window.location.search);
+  const CITY_ID = params.get('city_id');
+  const STOP_ID = params.get('stop_id');
+  const TRIP_ID = params.get('trip_id');
+  let allActivities = [];
+  let selectedActivity = null;
+  let searchDebounce = null;
+
+  if (requireAuth()) {
+    renderNav(TRIP_ID ? 'trips' : 'cities');
+    if (!CITY_ID) {
+      document.getElementById('noCityMsg').style.display = 'block';
+    } else {
+      document.getElementById('searchWrap').style.display = 'block';
+      loadActivities();
+    }
+  }
+
+  document.getElementById('searchInput').addEventListener('input', () => {
+    clearTimeout(searchDebounce);
+    searchDebounce = setTimeout(loadActivities, 250);
+  });
+  document.getElementById('categoryFilter').addEventListener('change', applyClientFilters);
+  document.getElementById('costFilter').addEventListener('change', applyClientFilters);
+  document.getElementById('durationFilter').addEventListener('change', applyClientFilters);
+
+  async function loadActivities() {
+    const area = document.getElementById('resultsArea');
+    const q = document.getElementById('searchInput').value.trim();
+    try {
+      const search = new URLSearchParams({ city_id: CITY_ID });
+      if (q) search.set('q', q);
+      const { activities } = await apiFetch(`/api/activities?${search.toString()}`);
+      allActivities = activities;
+
+      const cats = [...new Set(activities.map(a => a.category).filter(Boolean))].sort();
+      const catSelect = document.getElementById('categoryFilter');
+      if (catSelect.dataset.populated !== '1') {
+        catSelect.innerHTML = '<option value="">All categories</option>' +
+          cats.map(c => `<option value="${escapeHtml(c)}">${escapeHtml(c)}</option>`).join('');
+        catSelect.dataset.populated = '1';
+      }
+
+      applyClientFilters();
+    } catch (err) {
+      area.innerHTML = `<div class="empty" style="grid-column:1/-1;">Couldn't load activities: ${escapeHtml(err.message)}</div>`;
+    }
+  }
+
+  function applyClientFilters() {
+    const category = document.getElementById('categoryFilter').value;
+    const costRange = document.getElementById('costFilter').value;
+    const durRange = document.getElementById('durationFilter').value;
+
+    let filtered = allActivities;
+    if (category) filtered = filtered.filter(a => a.category === category);
+    if (costRange) {
+      const [min, max] = costRange.split('-').map(Number);
+      filtered = filtered.filter(a => (a.estimated_cost || 0) >= min && (a.estimated_cost || 0) <= max);
+    }
+    if (durRange) {
+      const [min, max] = durRange.split('-').map(Number);
+      filtered = filtered.filter(a => (a.estimated_duration_mins || 0) >= min && (a.estimated_duration_mins || 0) <= max);
+    }
+
+    document.getElementById('countSub').textContent = `${filtered.length} activit${filtered.length === 1 ? 'y' : 'ies'}`;
+
+    const area = document.getElementById('resultsArea');
+    if (!filtered.length) {
+      area.innerHTML = `<div class="empty" style="grid-column:1/-1;"><h3>No matches</h3><p>Try loosening a filter.</p></div>`;
+      return;
+    }
+
+    area.innerHTML = filtered.map(activityCardHtml).join('');
+    filtered.forEach(a => {
+      document.getElementById(`add-${a.activity_id}`)?.addEventListener('click', () => openAddModal(a));
+    });
+  }
+
+  function activityCardHtml(a) {
+    const cover = a.image_url ? `background-image:url('${a.image_url}')` : '';
+    return `
+      <div class="city-card" style="cursor:default;">
+        <div class="cover" style="${cover}"></div>
+        <div class="body">
+          <h4>${escapeHtml(a.title)}</h4>
+          <div class="meta"><span class="tag">${escapeHtml(a.category || 'general')}</span> · ${a.estimated_duration_mins || '—'} min</div>
+          <div class="meta" style="margin-top:4px;">${escapeHtml((a.description || '').slice(0, 90))}${(a.description || '').length > 90 ? '…' : ''}</div>
+          <div style="margin-top:10px; display:flex; align-items:center; justify-content:space-between;">
+            <span class="price" style="color:var(--teal); font-weight:600;">${formatMoney(a.estimated_cost)}</span>
+            ${STOP_ID
+              ? `<button class="btn btn-outline btn-sm" id="add-${a.activity_id}">+ Add</button>`
+              : `<span class="sub" style="font-size:11px;">Open from a trip to add</span>`}
+          </div>
+        </div>
+      </div>`;
+  }
+
+  /* ---------- Add to Itinerary modal ---------- */
+  const addModal = document.getElementById('addModal');
+
+  function openAddModal(activity) {
+    selectedActivity = activity;
+    document.getElementById('addActivityLabel').textContent = activity.title;
+    document.getElementById('scheduleCost').value = activity.estimated_cost || 0;
+    document.getElementById('scheduleDate').value = todayISO();
+    document.getElementById('scheduleTime').value = '';
+    document.getElementById('addModalMsg').className = 'form-msg';
+    addModal.classList.add('show');
+  }
+
+  document.getElementById('closeAddModal').addEventListener('click', () => addModal.classList.remove('show'));
+  addModal.addEventListener('click', (e) => { if (e.target === addModal) addModal.classList.remove('show'); });
+
+  document.getElementById('confirmAddBtn').addEventListener('click', async () => {
+    const msg = document.getElementById('addModalMsg');
+    const date = document.getElementById('scheduleDate').value;
+    if (!date) {
+      msg.textContent = 'Choose a date.';
+      msg.className = 'form-msg show error';
+      return;
+    }
+    try {
+      await apiFetch(`/api/stops/${STOP_ID}/activities`, {
+        method: 'POST',
+        body: JSON.stringify({
+          activity_id: selectedActivity.activity_id,
+          scheduled_date: date,
+          start_time: document.getElementById('scheduleTime').value || null,
+          cost: Number(document.getElementById('scheduleCost').value || 0),
+        }),
+      });
+      window.location.href = TRIP_ID ? `/trips/${TRIP_ID}/plan` : '/trips';
+    } catch (err) {
+      msg.textContent = err.message;
+      msg.className = 'form-msg show error';
+    }
+  });
+</script>
+</body>
+</html>

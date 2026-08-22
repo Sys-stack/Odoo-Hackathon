@@ -1,0 +1,168 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Itinerary — Waypoint</title>
+<link rel="stylesheet" href="/static/css/app.css">
+</head>
+<body>
+
+<nav class="topnav" id="topnav"></nav>
+
+<main class="page">
+  <div class="page-head">
+    <div>
+      <p class="sub"><a href="/trips">← My Trips</a></p>
+      <h1 id="tripName">Loading…</h1>
+      <p class="sub" id="tripDates"></p>
+      <p class="sub" id="tripDesc" style="margin-top:10px; max-width:560px;"></p>
+    </div>
+    <div style="display:flex; gap:10px; align-items:center; flex-wrap:wrap;">
+      <div class="view-toggle">
+        <button class="active" id="listViewBtn">List</button>
+        <button id="calendarViewBtn">Calendar</button>
+      </div>
+      <div class="budget-pill" id="budgetPill">$0 estimated</div>
+      <a class="btn btn-outline" id="budgetLink" href="#">Budget</a>
+      <button class="btn btn-outline" id="shareBtn">Share</button>
+      <a class="btn btn-primary" id="editLink" href="#">Edit plan</a>
+    </div>
+  </div>
+
+  <div id="shareBox" class="share-box" style="display:none; margin-bottom:24px;">
+    <span class="sans" style="color:rgba(15,42,46,0.55);">Public link:</span>
+    <input type="text" id="shareUrl" readonly>
+    <button class="btn btn-outline btn-sm" id="copyShareBtn">Copy</button>
+    <label class="switch" title="Toggle public sharing">
+      <input type="checkbox" id="shareToggle">
+      <span class="slider"></span>
+    </label>
+  </div>
+
+  <div id="timelineArea">
+    <div class="loading">Loading itinerary…</div>
+  </div>
+</main>
+
+<script src="/static/js/app.js"></script>
+<script>
+  const TRIP_ID = {{ trip_id }};
+
+  if (requireAuth()) {
+    renderNav('trips');
+    document.getElementById('editLink').href = `/trips/${TRIP_ID}/plan`;
+    document.getElementById('budgetLink').href = `/trips/${TRIP_ID}/budget`;
+    document.getElementById('calendarViewBtn').addEventListener('click', () => {
+      window.location.href = `/trips/${TRIP_ID}/calendar`;
+    });
+    loadTrip();
+    loadShareState();
+  }
+
+  async function loadShareState() {
+    try {
+      const { trip } = await apiFetch(`/api/trips/${TRIP_ID}`);
+      document.getElementById('shareToggle').checked = !!trip.is_public;
+      if (trip.is_public && trip.shareable_token) showShareBox(trip.shareable_token);
+    } catch { /* handled by loadTrip() */ }
+  }
+
+  function showShareBox(token) {
+    const url = `${window.location.origin}/shared/${token}`;
+    document.getElementById('shareUrl').value = url;
+    document.getElementById('shareBox').style.display = 'flex';
+  }
+
+  document.getElementById('shareBtn').addEventListener('click', () => {
+    const box = document.getElementById('shareBox');
+    box.style.display = box.style.display === 'none' ? 'flex' : 'none';
+  });
+
+  document.getElementById('copyShareBtn').addEventListener('click', async () => {
+    const ok = await copyToClipboard(document.getElementById('shareUrl').value);
+    const btn = document.getElementById('copyShareBtn');
+    btn.textContent = ok ? 'Copied!' : 'Copy';
+    setTimeout(() => { btn.textContent = 'Copy'; }, 1500);
+  });
+
+  document.getElementById('shareToggle').addEventListener('change', async (e) => {
+    try {
+      if (e.target.checked) {
+        const { shareable_token } = await apiFetch(`/api/trips/${TRIP_ID}/share`, { method: 'POST' });
+        showShareBox(shareable_token);
+      } else {
+        await apiFetch(`/api/trips/${TRIP_ID}/share`, { method: 'DELETE' });
+        document.getElementById('shareBox').style.display = 'none';
+      }
+    } catch (err) {
+      alert(`Couldn't update sharing: ${err.message}`);
+      e.target.checked = !e.target.checked;
+    }
+  });
+
+  async function loadTrip() {
+    const area = document.getElementById('timelineArea');
+    try {
+      const { trip } = await apiFetch(`/api/trips/${TRIP_ID}`);
+
+      document.getElementById('tripName').textContent = trip.trip_name;
+      document.getElementById('tripDates').textContent =
+        `${formatDateRange(trip.start_date, trip.end_date)} · ${dayCount(trip.start_date, trip.end_date)} days · ${trip.stop_count} stop${trip.stop_count === 1 ? '' : 's'}`;
+      document.getElementById('tripDesc').textContent = trip.description || '';
+      document.getElementById('budgetPill').textContent = `${formatMoney(trip.estimated_cost)} estimated`;
+
+      if (!trip.stops.length) {
+        area.innerHTML = `
+          <div class="empty">
+            <h3>No itinerary yet</h3>
+            <p>Add stops and activities to see your day-by-day plan here.</p>
+            <div style="margin-top:16px;"><a href="/trips/${TRIP_ID}/plan" class="btn btn-primary">Build itinerary</a></div>
+          </div>`;
+        return;
+      }
+
+      area.innerHTML = trip.stops.map(stopSection).join('');
+    } catch (err) {
+      area.innerHTML = `<div class="empty">Couldn't load this trip: ${escapeHtml(err.message)}</div>`;
+    }
+  }
+
+  function stopSection(stop) {
+    const header = `
+      <div class="page-head" style="margin: 30px 0 14px;">
+        <h1 style="font-size:22px;">${escapeHtml(stop.city.city_name)}, ${escapeHtml(stop.city.country)}</h1>
+        <span class="sub">${formatDateRange(stop.arrival_date, stop.departure_date)}</span>
+      </div>`;
+
+    if (!stop.activities.length) {
+      return header + `<div class="card"><div class="stop-empty">No activities planned for this stop yet.</div></div>`;
+    }
+
+    // Group this stop's activities by scheduled_date.
+    const byDate = {};
+    stop.activities.forEach(a => {
+      byDate[a.scheduled_date] = byDate[a.scheduled_date] || [];
+      byDate[a.scheduled_date].push(a);
+    });
+
+    const days = Object.keys(byDate).sort();
+    const dayHtml = days.map(date => `
+      <div class="day-group">
+        <h3>${formatDate(date)}</h3>
+        ${byDate[date].map(a => `
+          <div class="timeline-item">
+            <div class="time">${a.start_time || '—'}</div>
+            <div>
+              <div class="title">${escapeHtml(a.title || 'Untitled activity')}</div>
+              <div class="category">${escapeHtml(a.category || 'custom')}</div>
+            </div>
+            <div class="cost">${formatMoney(a.cost)}</div>
+          </div>`).join('')}
+      </div>`).join('');
+
+    return header + `<div class="card">${dayHtml}</div>`;
+  }
+</script>
+</body>
+</html>

@@ -1,0 +1,143 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Shared trip — Waypoint</title>
+<link rel="stylesheet" href="/static/css/app.css">
+</head>
+<body>
+
+<nav class="topnav">
+  <a class="brand" href="/">Waypoint</a>
+  <div class="links"></div>
+  <div class="user" id="authArea"></div>
+</nav>
+
+<main class="page">
+  <div id="content">
+    <div class="loading">Loading shared trip…</div>
+  </div>
+</main>
+
+<script src="/static/js/app.js"></script>
+<script>
+  const TOKEN = {{ token | tojson }};
+
+  const authArea = document.getElementById('authArea');
+  if (getToken()) {
+    authArea.innerHTML = `<a href="/dashboard" class="btn btn-outline btn-sm">Dashboard</a>`;
+  } else {
+    authArea.innerHTML = `<a href="/login?next=${encodeURIComponent('/shared/' + TOKEN)}" class="btn btn-outline btn-sm">Sign in</a>`;
+  }
+
+  loadTrip();
+
+  async function loadTrip() {
+    const content = document.getElementById('content');
+    try {
+      const response = await fetch(`/api/public/trips/${TOKEN}`);
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(data.message || "This trip isn't available.");
+
+      const trip = data.trip;
+      content.innerHTML = `
+        <div class="page-head">
+          <div>
+            <h1>${escapeHtml(trip.trip_name)}</h1>
+            <p class="sub">Shared by ${escapeHtml(trip.owner_name || 'a Waypoint traveler')} · ${formatDateRange(trip.start_date, trip.end_date)} · ${trip.stop_count} stop${trip.stop_count === 1 ? '' : 's'}</p>
+            ${trip.description ? `<p class="sub" style="margin-top:10px; max-width:560px;">${escapeHtml(trip.description)}</p>` : ''}
+          </div>
+          <div class="budget-pill">${formatMoney(trip.estimated_cost)} estimated</div>
+        </div>
+
+        <div class="card" style="margin-bottom:28px; display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:16px;">
+          <div>
+            <div class="sans" style="font-size:13px; color:rgba(15,42,46,0.6);">Like this itinerary? Copy it into your own account and customize it.</div>
+          </div>
+          <div style="display:flex; gap:10px;">
+            <button class="btn btn-accent" id="copyTripBtn">Copy this trip</button>
+            <button class="btn btn-outline" id="copyLinkBtn">Copy link</button>
+          </div>
+        </div>
+
+        <div class="filter-bar" style="margin-bottom:8px;">
+          <div class="sans" style="font-size:12px; color:rgba(15,42,46,0.5);">Share via:</div>
+          <a class="btn btn-outline btn-sm" target="_blank" rel="noopener" href="https://wa.me/?text=${encodeURIComponent(window.location.href)}">WhatsApp</a>
+          <a class="btn btn-outline btn-sm" target="_blank" rel="noopener" href="https://twitter.com/intent/tweet?url=${encodeURIComponent(window.location.href)}&text=${encodeURIComponent('Check out my trip: ' + trip.trip_name)}">X / Twitter</a>
+          <a class="btn btn-outline btn-sm" target="_blank" rel="noopener" href="https://www.facebook.com/sharer/sharer.php?u=${encodeURIComponent(window.location.href)}">Facebook</a>
+        </div>
+
+        <div id="stopsArea"></div>
+      `;
+
+      document.getElementById('stopsArea').innerHTML = trip.stops.length
+        ? trip.stops.map(stopSection).join('')
+        : `<div class="empty"><h3>No stops added yet</h3></div>`;
+
+      document.getElementById('copyLinkBtn').addEventListener('click', async () => {
+        const ok = await copyToClipboard(window.location.href);
+        document.getElementById('copyLinkBtn').textContent = ok ? 'Link copied!' : 'Copy failed';
+        setTimeout(() => { document.getElementById('copyLinkBtn').textContent = 'Copy link'; }, 1800);
+      });
+
+      document.getElementById('copyTripBtn').addEventListener('click', copyTrip);
+    } catch (err) {
+      content.innerHTML = `<div class="empty"><h3>Trip not found</h3><p>${escapeHtml(err.message)}</p></div>`;
+    }
+  }
+
+  function stopSection(stop) {
+    const header = `
+      <div class="page-head" style="margin: 30px 0 14px;">
+        <h1 style="font-size:22px;">${escapeHtml(stop.city.city_name)}, ${escapeHtml(stop.city.country)}</h1>
+        <span class="sub">${formatDateRange(stop.arrival_date, stop.departure_date)}</span>
+      </div>`;
+
+    if (!stop.activities.length) {
+      return header + `<div class="card"><div class="stop-empty">No activities planned for this stop.</div></div>`;
+    }
+
+    const byDate = {};
+    stop.activities.forEach(a => {
+      byDate[a.scheduled_date] = byDate[a.scheduled_date] || [];
+      byDate[a.scheduled_date].push(a);
+    });
+
+    const dayHtml = Object.keys(byDate).sort().map(date => `
+      <div class="day-group">
+        <h3>${formatDate(date)}</h3>
+        ${byDate[date].map(a => `
+          <div class="timeline-item">
+            <div class="time">${a.start_time || '—'}</div>
+            <div>
+              <div class="title">${escapeHtml(a.title || 'Untitled activity')}</div>
+              <div class="category">${escapeHtml(a.category || 'custom')}</div>
+            </div>
+            <div class="cost">${formatMoney(a.cost)}</div>
+          </div>`).join('')}
+      </div>`).join('');
+
+    return header + `<div class="card">${dayHtml}</div>`;
+  }
+
+  async function copyTrip() {
+    if (!getToken()) {
+      window.location.href = `/login?next=${encodeURIComponent('/shared/' + TOKEN)}`;
+      return;
+    }
+    const btn = document.getElementById('copyTripBtn');
+    btn.disabled = true;
+    btn.textContent = 'Copying…';
+    try {
+      const { trip } = await apiFetch(`/api/public/trips/${TOKEN}/copy`, { method: 'POST' });
+      window.location.href = `/trips/${trip.trip_id}/plan`;
+    } catch (err) {
+      alert(`Couldn't copy this trip: ${err.message}`);
+      btn.disabled = false;
+      btn.textContent = 'Copy this trip';
+    }
+  }
+</script>
+</body>
+</html>

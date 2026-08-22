@@ -1,0 +1,188 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Plan a Trip — Waypoint</title>
+<link rel="stylesheet" href="/static/css/app.css">
+</head>
+<body>
+
+<nav class="topnav" id="topnav"></nav>
+
+<main class="page">
+  <div class="page-head">
+    <div>
+      <h1>Plan a new trip</h1>
+      <p class="sub">Give it a name and dates — you'll add stops and activities next.</p>
+    </div>
+  </div>
+
+  <div class="card" style="max-width:640px;">
+    <div class="form-msg" id="formMsg"></div>
+
+    <form id="tripForm" novalidate>
+      <div class="field">
+        <label for="tripName">Trip name</label>
+        <input type="text" id="tripName" placeholder="e.g. Iberian Coast Loop" required>
+        <span class="field-error" id="tripNameError">Trip name is required.</span>
+      </div>
+
+      <div class="field-row">
+        <div class="field">
+          <label for="startDate">Start date</label>
+          <input type="date" id="startDate" required>
+          <span class="field-error" id="startDateError">Start date is required.</span>
+        </div>
+        <div class="field">
+          <label for="endDate">End date</label>
+          <input type="date" id="endDate" required>
+          <span class="field-error" id="endDateError">End date must be after start date.</span>
+        </div>
+      </div>
+
+      <div class="field">
+        <label for="description">Description <span style="text-transform:none; letter-spacing:0;">(optional)</span></label>
+        <textarea id="description" rows="3" placeholder="What's this trip about?"></textarea>
+      </div>
+
+      <div class="field">
+        <label for="totalBudget">Total budget ($) <span style="text-transform:none; letter-spacing:0;">(optional)</span></label>
+        <input type="number" id="totalBudget" min="0" step="10" placeholder="e.g. 2000">
+      </div>
+
+      <div class="field">
+        <label for="coverPhoto">Cover photo URL <span style="text-transform:none; letter-spacing:0;">(optional)</span></label>
+        <input type="url" id="coverPhoto" placeholder="https://…">
+      </div>
+
+      <div class="field">
+        <label for="coverPhotoFile">Or upload a photo <span style="text-transform:none; letter-spacing:0;">(optional)</span></label>
+        <input type="file" id="coverPhotoFile" accept="image/*">
+        <div id="coverPreviewWrap" style="display:none; margin-top:10px;">
+          <div style="height:120px; border-radius:4px; background-size:cover; background-position:center; border:1px solid var(--line);" id="coverPreview"></div>
+        </div>
+      </div>
+
+      <div style="display:flex; gap:10px; margin-top:8px;">
+        <button type="submit" class="btn btn-accent" id="submitBtn">Create trip &amp; add stops</button>
+        <a href="/trips" class="btn btn-outline">Cancel</a>
+      </div>
+    </form>
+  </div>
+
+  <section style="margin-top:44px;">
+    <div class="section-label">Suggestions for places to visit</div>
+    <div id="suggestionsArea" class="grid">
+      <div class="loading">Loading suggestions…</div>
+    </div>
+  </section>
+</main>
+
+<script src="/static/js/app.js"></script>
+<script>
+  if (requireAuth()) {
+    renderNav('new');
+    loadSuggestions();
+  }
+
+  const form = document.getElementById('tripForm');
+  const tripNameInput = document.getElementById('tripName');
+  const startDateInput = document.getElementById('startDate');
+  const endDateInput = document.getElementById('endDate');
+  const descriptionInput = document.getElementById('description');
+  const totalBudgetInput = document.getElementById('totalBudget');
+  const coverPhotoInput = document.getElementById('coverPhoto');
+  const coverPhotoFile = document.getElementById('coverPhotoFile');
+  const submitBtn = document.getElementById('submitBtn');
+  const formMsg = document.getElementById('formMsg');
+  let uploadedPhotoDataUrl = null;
+
+  startDateInput.value = todayISO();
+
+  coverPhotoFile.addEventListener('change', (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = () => {
+      uploadedPhotoDataUrl = reader.result;
+      document.getElementById('coverPreview').style.backgroundImage = `url('${uploadedPhotoDataUrl}')`;
+      document.getElementById('coverPreviewWrap').style.display = 'block';
+    };
+    reader.readAsDataURL(file);
+  });
+
+  async function loadSuggestions() {
+    const area = document.getElementById('suggestionsArea');
+    try {
+      const { cities } = await apiFetch('/api/cities?sort=popularity&limit=6');
+      area.innerHTML = cities.map(c => {
+        const cover = c.image_url ? `background-image:url('${c.image_url}')` : '';
+        return `
+          <div class="city-card" style="cursor:default;">
+            <div class="cover" style="${cover}"></div>
+            <div class="body">
+              <h4>${escapeHtml(c.city_name)}</h4>
+              <div class="meta">${escapeHtml(c.country)} · cost index ${c.cost_index}</div>
+            </div>
+          </div>`;
+      }).join('');
+    } catch (err) {
+      area.innerHTML = `<div class="empty" style="grid-column:1/-1;">Couldn't load suggestions.</div>`;
+    }
+  }
+
+  function showMessage(text, type) {
+    formMsg.textContent = text;
+    formMsg.className = `form-msg show ${type}`;
+  }
+
+  function setFieldError(input, errorEl, valid) {
+    errorEl.classList.toggle('show', !valid);
+  }
+
+  form.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    formMsg.className = 'form-msg';
+
+    const tripName = tripNameInput.value.trim();
+    const startDate = startDateInput.value;
+    const endDate = endDateInput.value;
+
+    const nameValid = tripName.length > 0;
+    const datesValid = startDate && endDate && endDate >= startDate;
+
+    setFieldError(tripNameInput, document.getElementById('tripNameError'), nameValid);
+    setFieldError(endDateInput, document.getElementById('endDateError'), datesValid);
+
+    if (!nameValid || !datesValid) {
+      showMessage('Fix the highlighted fields and try again.', 'error');
+      return;
+    }
+
+    submitBtn.disabled = true;
+    submitBtn.textContent = 'Creating…';
+
+    try {
+      const { trip } = await apiFetch('/api/trips', {
+        method: 'POST',
+        body: JSON.stringify({
+          trip_name: tripName,
+          start_date: startDate,
+          end_date: endDate,
+          description: descriptionInput.value.trim(),
+          total_budget: totalBudgetInput.value === '' ? null : Number(totalBudgetInput.value),
+          cover_photo_url: uploadedPhotoDataUrl || coverPhotoInput.value.trim(),
+        }),
+      });
+
+      window.location.href = `/trips/${trip.trip_id}/plan`;
+    } catch (err) {
+      showMessage(err.message || 'Something went wrong.', 'error');
+      submitBtn.disabled = false;
+      submitBtn.textContent = 'Create trip & add stops';
+    }
+  });
+</script>
+</body>
+</html>

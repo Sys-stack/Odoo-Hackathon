@@ -1,0 +1,128 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Admin — Waypoint</title>
+<link rel="stylesheet" href="/static/css/app.css">
+</head>
+<body>
+
+<nav class="topnav" id="topnav"></nav>
+
+<main class="page">
+  <div class="page-head">
+    <div>
+      <h1>Admin dashboard</h1>
+      <p class="sub">Platform-wide activity and engagement.</p>
+    </div>
+  </div>
+
+  <div id="content">
+    <div class="loading">Loading stats…</div>
+  </div>
+</main>
+
+<script src="/static/js/app.js"></script>
+<script>
+  if (requireAuth()) {
+    renderNav('admin');
+    const user = getStoredUser();
+    if (!user || user.role !== 'admin') {
+      // Client-side check is just UX — the API enforces this for real below.
+      document.getElementById('content').innerHTML =
+        `<div class="empty"><h3>Admins only</h3><p>Redirecting to your dashboard…</p></div>`;
+      setTimeout(() => { window.location.href = '/dashboard'; }, 1200);
+    } else {
+      loadStats();
+    }
+  }
+
+  async function loadStats() {
+    const content = document.getElementById('content');
+    try {
+      const [stats, usersRes] = await Promise.all([
+        apiFetch('/api/admin/stats'),
+        apiFetch('/api/admin/users'),
+      ]);
+      render(stats, usersRes.users);
+    } catch (err) {
+      if (String(err.message).toLowerCase().includes('admin access required')) {
+        content.innerHTML = `<div class="empty"><h3>Admins only</h3><p>Redirecting to your dashboard…</p></div>`;
+        setTimeout(() => { window.location.href = '/dashboard'; }, 1200);
+      } else {
+        content.innerHTML = `<div class="empty">Couldn't load admin data: ${escapeHtml(err.message)}</div>`;
+      }
+    }
+  }
+
+  function render(stats, users) {
+    document.getElementById('content').innerHTML = `
+      <div class="stat-grid">
+        <div class="stat-card"><div class="label">Total users</div><div class="value">${stats.total_users}</div></div>
+        <div class="stat-card"><div class="label">Total trips</div><div class="value">${stats.total_trips}</div></div>
+        <div class="stat-card"><div class="label">Public trips</div><div class="value">${stats.public_trips}</div></div>
+      </div>
+
+      <div style="display:grid; grid-template-columns: 1fr 1fr; gap:24px; margin-bottom:28px;" id="chartsRow">
+        <div class="card">
+          <h3 style="font-size:16px; margin-bottom:16px;">Top cities by trip stops</h3>
+          <div id="citiesChart"></div>
+        </div>
+        <div class="card">
+          <h3 style="font-size:16px; margin-bottom:16px;">Top activities by uses</h3>
+          <div id="activitiesChart"></div>
+        </div>
+      </div>
+
+      <div class="card">
+        <h3 style="font-size:16px; margin-bottom:16px;">Users</h3>
+        <div style="overflow-x:auto;">
+          <table class="admin-table">
+            <thead><tr><th>Name</th><th>Email</th><th>Role</th><th>Joined</th></tr></thead>
+            <tbody>
+              ${users.map(u => `
+                <tr>
+                  <td>${escapeHtml(u.full_name || '—')}</td>
+                  <td>${escapeHtml(u.email)}</td>
+                  <td><span class="role-badge ${u.role === 'admin' ? 'admin' : ''}">${escapeHtml(u.role)}</span></td>
+                  <td>${u.created_at ? formatDate(u.created_at.slice(0, 10)) : '—'}</td>
+                </tr>`).join('')}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    `;
+
+    renderBarList('citiesChart', stats.top_cities.map(c => ({
+      label: `${c.city_name}, ${c.country}`,
+      value: c.trip_stops,
+    })), '#123B40');
+
+    renderBarList('activitiesChart', stats.top_activities.map(a => ({
+      label: a.title,
+      value: a.times_added,
+    })), '#E8823C');
+
+    if (window.matchMedia('(max-width: 760px)').matches) {
+      document.getElementById('chartsRow').style.gridTemplateColumns = '1fr';
+    }
+  }
+
+  function renderBarList(containerId, items, color) {
+    const el = document.getElementById(containerId);
+    if (!items.length) {
+      el.innerHTML = `<div class="stop-empty">No data yet.</div>`;
+      return;
+    }
+    const max = Math.max(...items.map(i => i.value), 1);
+    el.innerHTML = `<div class="bar-chart">${items.map(i => `
+      <div class="bar-row">
+        <div class="cat-label" style="text-transform:none;">${escapeHtml(i.label)}</div>
+        <div class="bar-track"><div class="bar-fill" style="width:${(i.value / max) * 100}%; background:${color};"></div></div>
+        <div class="amt">${i.value}</div>
+      </div>`).join('')}</div>`;
+  }
+</script>
+</body>
+</html>

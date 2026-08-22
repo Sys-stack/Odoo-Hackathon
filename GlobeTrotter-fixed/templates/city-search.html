@@ -1,0 +1,200 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Explore Cities — Waypoint</title>
+<link rel="stylesheet" href="/static/css/app.css">
+</head>
+<body>
+
+<nav class="topnav" id="topnav"></nav>
+
+<main class="page">
+  <div class="page-head">
+    <div>
+      <h1>Explore cities</h1>
+      <p class="sub" id="countSub">Loading…</p>
+    </div>
+  </div>
+
+  <div class="filter-bar">
+    <input type="text" id="searchInput" placeholder="Search by city or country…">
+    <select id="regionFilter"><option value="">All regions</option></select>
+    <select id="sortSelect">
+      <option value="popularity">Sort: Popularity</option>
+      <option value="cost">Sort: Cost (low to high)</option>
+      <option value="name">Sort: Name</option>
+    </select>
+  </div>
+
+  <div id="resultsArea" class="grid">
+    <div class="loading">Loading cities…</div>
+  </div>
+</main>
+
+<!-- Add to Trip modal -->
+<div class="modal-overlay" id="addModal">
+  <div class="modal">
+    <div class="modal-head">
+      <h3>Add <span id="addCityLabel"></span> to a trip</h3>
+      <button class="modal-close" id="closeAddModal">&times;</button>
+    </div>
+
+    <div class="field">
+      <label for="tripSelect">Choose a trip</label>
+      <select id="tripSelect"></select>
+    </div>
+    <div class="field-row">
+      <div class="field">
+        <label for="arrivalInput">Arrival</label>
+        <input type="date" id="arrivalInput">
+      </div>
+      <div class="field">
+        <label for="departureInput">Departure</label>
+        <input type="date" id="departureInput">
+      </div>
+    </div>
+    <div class="form-msg" id="addModalMsg"></div>
+    <button class="btn btn-accent" id="confirmAddBtn">Add as a stop</button>
+    <p class="sub" style="margin-top:14px;">Don't have a trip yet? <a href="/trips/new">Create one first</a>.</p>
+  </div>
+</div>
+
+<script src="/static/js/app.js"></script>
+<script>
+  let allCities = [];
+  let selectedCity = null;
+  let searchDebounce = null;
+
+  if (requireAuth()) {
+    renderNav('cities');
+    loadCities();
+  }
+
+  document.getElementById('searchInput').addEventListener('input', () => {
+    clearTimeout(searchDebounce);
+    searchDebounce = setTimeout(loadCities, 250);
+  });
+  document.getElementById('regionFilter').addEventListener('change', loadCities);
+  document.getElementById('sortSelect').addEventListener('change', loadCities);
+
+  async function loadCities() {
+    const area = document.getElementById('resultsArea');
+    const q = document.getElementById('searchInput').value.trim();
+    const region = document.getElementById('regionFilter').value;
+    const sort = document.getElementById('sortSelect').value;
+
+    try {
+      const params = new URLSearchParams({ sort, limit: '50' });
+      if (q) params.set('q', q);
+      if (region) params.set('region', region);
+
+      const { cities } = await apiFetch(`/api/cities?${params.toString()}`);
+      allCities = cities;
+      document.getElementById('countSub').textContent = `${cities.length} destination${cities.length === 1 ? '' : 's'}`;
+
+      populateRegionFilter(cities, region);
+
+      if (!cities.length) {
+        area.innerHTML = `<div class="empty" style="grid-column:1/-1;"><h3>No cities found</h3><p>Try a different search or filter.</p></div>`;
+        return;
+      }
+
+      area.innerHTML = cities.map(cityCardHtml).join('');
+      cities.forEach(c => {
+        document.getElementById(`add-${c.city_id}`)?.addEventListener('click', () => openAddModal(c));
+      });
+    } catch (err) {
+      area.innerHTML = `<div class="empty" style="grid-column:1/-1;">Couldn't load cities: ${escapeHtml(err.message)}</div>`;
+    }
+  }
+
+  function populateRegionFilter(cities, currentValue) {
+    const select = document.getElementById('regionFilter');
+    if (select.dataset.populated === '1') return; // build once from the first broad load
+    const regions = [...new Set(cities.map(c => c.region).filter(Boolean))].sort();
+    select.innerHTML = '<option value="">All regions</option>' +
+      regions.map(r => `<option value="${escapeHtml(r)}" ${r === currentValue ? 'selected' : ''}>${escapeHtml(r)}</option>`).join('');
+    select.dataset.populated = '1';
+  }
+
+  function cityCardHtml(c) {
+    const cover = c.image_url ? `background-image:url('${c.image_url}')` : '';
+    return `
+      <div class="city-card" style="cursor:default;">
+        <div class="cover" style="${cover}"></div>
+        <div class="body">
+          <h4>${escapeHtml(c.city_name)}</h4>
+          <div class="meta">${escapeHtml(c.country)} · ${escapeHtml(c.region || '')}</div>
+          <div class="meta">Cost index ${c.cost_index} · Popularity ${c.popularity_score}</div>
+          <div style="margin-top:10px;">
+            <button class="btn btn-outline btn-sm" id="add-${c.city_id}">+ Add to Trip</button>
+          </div>
+        </div>
+      </div>`;
+  }
+
+  /* ---------- Add to Trip modal ---------- */
+  const addModal = document.getElementById('addModal');
+
+  async function openAddModal(city) {
+    selectedCity = city;
+    document.getElementById('addCityLabel').textContent = `${city.city_name}, ${city.country}`;
+    document.getElementById('addModalMsg').className = 'form-msg';
+    document.getElementById('arrivalInput').value = todayISO();
+    document.getElementById('departureInput').value = todayISO();
+
+    const tripSelect = document.getElementById('tripSelect');
+    tripSelect.innerHTML = '<option>Loading your trips…</option>';
+    addModal.classList.add('show');
+
+    try {
+      const { trips } = await apiFetch('/api/trips');
+      if (!trips.length) {
+        tripSelect.innerHTML = '<option value="">No trips yet — create one first</option>';
+        return;
+      }
+      tripSelect.innerHTML = trips.map(t => `<option value="${t.trip_id}" data-start="${t.start_date}" data-end="${t.end_date}">${escapeHtml(t.trip_name)}</option>`).join('');
+      const opt = tripSelect.options[0];
+      document.getElementById('arrivalInput').value = opt.dataset.start;
+      document.getElementById('departureInput').value = opt.dataset.end;
+    } catch (err) {
+      tripSelect.innerHTML = `<option value="">Couldn't load trips</option>`;
+    }
+  }
+
+  document.getElementById('closeAddModal').addEventListener('click', () => addModal.classList.remove('show'));
+  addModal.addEventListener('click', (e) => { if (e.target === addModal) addModal.classList.remove('show'); });
+
+  document.getElementById('confirmAddBtn').addEventListener('click', async () => {
+    const msg = document.getElementById('addModalMsg');
+    const tripId = document.getElementById('tripSelect').value;
+    const arrival = document.getElementById('arrivalInput').value;
+    const departure = document.getElementById('departureInput').value;
+
+    if (!tripId) {
+      msg.textContent = 'Choose a trip first.';
+      msg.className = 'form-msg show error';
+      return;
+    }
+    if (!arrival || !departure || departure < arrival) {
+      msg.textContent = 'Departure must be on or after arrival.';
+      msg.className = 'form-msg show error';
+      return;
+    }
+
+    try {
+      await apiFetch(`/api/trips/${tripId}/stops`, {
+        method: 'POST',
+        body: JSON.stringify({ city_id: selectedCity.city_id, arrival_date: arrival, departure_date: departure }),
+      });
+      window.location.href = `/trips/${tripId}/plan`;
+    } catch (err) {
+      msg.textContent = err.message;
+      msg.className = 'form-msg show error';
+    }
+  });
+</script>
+</body>
+</html>
