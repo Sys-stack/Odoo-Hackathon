@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Sign in — Waypoint</title>
+<title>Create account — GlobeTrotter</title>
 <style>
   :root{
     --ink:#0F2A2E;
@@ -14,6 +14,7 @@
     --sun-soft:#F3B26B;
     --line: rgba(244,239,230,0.16);
     --error:#E4573D;
+    --ok:#3E7C5A;
     --radius: 4px;
   }
 
@@ -31,7 +32,6 @@
   @media (max-width: 860px){
     body{ grid-template-columns: 1fr; }
     .side{ display:none; }
-    
   }
 
   /* LEFT: route panel */
@@ -66,52 +66,37 @@
     z-index:1;
   }
 
-  .route{
-    z-index:1;
-  }
+  .route{ z-index:1; }
 
   .route h1{
     font-size: clamp(34px, 4vw, 52px);
     line-height:1.05;
     font-weight: 500;
-    max-width: 9ch;
+    max-width: 10ch;
     margin-bottom: 28px;
   }
 
-  .route h1 em{
-    font-style: italic;
-    color: var(--sun-soft);
-  }
+  .route h1 em{ font-style: italic; color: var(--sun-soft); }
 
-  .route-line{
+  .perks{
     display:flex;
     flex-direction:column;
-    gap:0;
     font-family: 'Helvetica Neue', Arial, sans-serif;
     font-size: 13px;
-    letter-spacing: 0.03em;
   }
 
-  .stop{
+  .perk{
     display:grid;
-    grid-template-columns: 14px 1fr auto;
+    grid-template-columns: 14px 1fr;
     align-items:center;
     gap: 14px;
     padding: 12px 0;
     border-top: 1px solid var(--line);
     color: rgba(244,239,230,0.75);
   }
-  .stop:last-child{ border-bottom: 1px solid var(--line); }
+  .perk:last-child{ border-bottom: 1px solid var(--line); }
 
-  .dot{
-    width:7px; height:7px; border-radius:50%;
-    background: var(--sun-soft);
-  }
-
-  .stop .cost{
-    color: rgba(244,239,230,0.45);
-    font-variant-numeric: tabular-nums;
-  }
+  .dot{ width:7px; height:7px; border-radius:50%; background: var(--sun-soft); }
 
   .side-foot{
     z-index:1;
@@ -129,34 +114,23 @@
     padding: 40px 24px;
   }
 
-  .form-wrap{
-    width:100%;
-    max-width: 380px;
-  }
+  .form-wrap{ width:100%; max-width: 380px; }
 
-  .form-wrap h2{
-    font-size: 30px;
-    font-weight: 500;
-    margin-bottom: 6px;
-  }
+  .form-wrap h2{ font-size: 30px; font-weight: 500; margin-bottom: 6px; }
 
   .sub{
     font-family: 'Helvetica Neue', Arial, sans-serif;
     font-size: 14px;
     color: rgba(15,42,46,0.6);
-    margin-bottom: 34px;
+    margin-bottom: 30px;
   }
 
   .sub a{ color: var(--sun); text-decoration:none; font-weight:600; }
   .sub a:hover{ text-decoration:underline; }
 
-  form{ display:flex; flex-direction:column; gap: 18px; }
+  form{ display:flex; flex-direction:column; gap: 16px; }
 
-  .field{
-    display:flex;
-    flex-direction:column;
-    gap:6px;
-  }
+  .field{ display:flex; flex-direction:column; gap:6px; }
 
   .field label{
     font-family: 'Helvetica Neue', Arial, sans-serif;
@@ -183,9 +157,7 @@
     box-shadow: 0 0 0 3px rgba(232,130,60,0.15);
   }
 
-  .field input.invalid{
-    border-color: var(--error);
-  }
+  .field input.invalid{ border-color: var(--error); }
 
   .field-error{
     font-family: 'Helvetica Neue', Arial, sans-serif;
@@ -194,35 +166,43 @@
     min-height: 14px;
     display:none;
   }
-
   .field-error.show{ display:block; }
 
-  .row-between{
+  /* password strength */
+  .strength{
     display:flex;
-    align-items:center;
-    justify-content:space-between;
+    gap: 5px;
+    margin-top: 2px;
+  }
+  .strength span{
+    height: 3px;
+    flex:1;
+    background: rgba(15,42,46,0.12);
+    border-radius: 2px;
+    transition: background .15s ease;
+  }
+  .strength-label{
     font-family: 'Helvetica Neue', Arial, sans-serif;
-    font-size: 13px;
-    margin-top: -4px;
+    font-size: 11px;
+    color: rgba(15,42,46,0.45);
+    margin-top: 2px;
   }
 
-  .remember{
+  .terms{
     display:flex;
-    align-items:center;
-    gap: 8px;
+    align-items:flex-start;
+    gap: 9px;
+    font-family: 'Helvetica Neue', Arial, sans-serif;
+    font-size: 12.5px;
     color: rgba(15,42,46,0.65);
+    line-height:1.5;
   }
-
-  .remember input{ accent-color: var(--sun); width:14px; height:14px; }
-
-  .row-between a{
-    color: rgba(15,42,46,0.65);
-    text-decoration:none;
-  }
-  .row-between a:hover{ color: var(--sun); }
+  .terms input{ accent-color: var(--sun); width:14px; height:14px; margin-top:2px; flex-shrink:0; }
+  .terms a{ color: var(--teal); font-weight:600; text-decoration:none; }
+  .terms a:hover{ text-decoration:underline; }
 
   .submit{
-    margin-top: 8px;
+    margin-top: 4px;
     background: var(--teal);
     color: var(--paper);
     border:none;
@@ -235,16 +215,10 @@
     text-transform: uppercase;
     cursor:pointer;
     transition: background .15s ease, transform .1s ease;
-    position:relative;
   }
-
   .submit:hover{ background: var(--teal-deep); }
   .submit:active{ transform: translateY(1px); }
-
-  .submit:disabled{
-    opacity: 0.6;
-    cursor: default;
-  }
+  .submit:disabled{ opacity: 0.6; cursor: default; }
 
   .form-msg{
     font-family: 'Helvetica Neue', Arial, sans-serif;
@@ -260,16 +234,16 @@
     border: 1px solid rgba(228,87,61,0.25);
   }
   .form-msg.success{
-    background: rgba(18,59,64,0.08);
-    color: var(--teal);
-    border: 1px solid rgba(18,59,64,0.2);
+    background: rgba(62,124,90,0.1);
+    color: var(--ok);
+    border: 1px solid rgba(62,124,90,0.25);
   }
 
   .divider{
     display:flex;
     align-items:center;
     gap:12px;
-    margin: 26px 0;
+    margin: 22px 0;
     font-family: 'Helvetica Neue', Arial, sans-serif;
     font-size: 12px;
     color: rgba(15,42,46,0.4);
@@ -301,26 +275,32 @@
 <body>
 
   <aside class="side">
-    <div class="brand">Waypoint</div>
+    <div class="brand">GlobeTrotter</div>
     <div class="route">
-      <h1>Plan it once. <em>Wander</em> freely.</h1>
-      <div class="route-line">
-        <div class="stop"><span class="dot"></span><span>Lisbon → Porto</span><span class="cost">$210</span></div>
-        <div class="stop"><span class="dot"></span><span>Porto → Marrakech</span><span class="cost">$340</span></div>
-        <div class="stop"><span class="dot"></span><span>Marrakech → Fes</span><span class="cost">$95</span></div>
+      <h1>Every trip starts with <em>one stop</em>.</h1>
+      <div class="perks">
+        <div class="perk"><span class="dot"></span><span>Build multi-city itineraries in minutes</span></div>
+        <div class="perk"><span class="dot"></span><span>Track budgets against real spend</span></div>
+        <div class="perk"><span class="dot"></span><span>Share trips with a single link</span></div>
       </div>
     </div>
-    <div class="side-foot">Trips, stops, and budgets — kept in one place.</div>
+    <div class="side-foot">Free to join. No credit card required.</div>
   </aside>
 
   <main class="panel">
     <div class="form-wrap">
-      <h2>Welcome back</h2>
-      <p class="sub">New here? <a href="#" id="signupLink">Create an account</a></p>
+      <h2>Create your account</h2>
+      <p class="sub">Already have one? <a href="login.html">Sign in</a></p>
 
       <div class="form-msg" id="formMsg"></div>
 
-      <form id="loginForm" novalidate>
+      <form id="registerForm" novalidate>
+        <div class="field">
+          <label for="fullName">Full name</label>
+          <input type="text" id="fullName" name="fullName" placeholder="Jordan Ellis" autocomplete="name" required>
+          <span class="field-error" id="fullNameError">Enter your name.</span>
+        </div>
+
         <div class="field">
           <label for="email">Email</label>
           <input type="email" id="email" name="email" placeholder="you@example.com" autocomplete="email" required>
@@ -329,19 +309,27 @@
 
         <div class="field">
           <label for="password">Password</label>
-          <input type="password" id="password" name="password" placeholder="••••••••" autocomplete="current-password" required>
-          <span class="field-error" id="passwordError">Password is required.</span>
+          <input type="password" id="password" name="password" placeholder="Min. 8 characters" autocomplete="new-password" required>
+          <div class="strength" id="strengthBar">
+            <span></span><span></span><span></span><span></span>
+          </div>
+          <span class="strength-label" id="strengthLabel">&nbsp;</span>
+          <span class="field-error" id="passwordError">Password must be at least 8 characters.</span>
         </div>
 
-        <div class="row-between">
-          <label class="remember">
-            <input type="checkbox" id="remember" name="remember">
-            Remember me
-          </label>
-          <a href="#" id="forgotLink">Forgot password?</a>
+        <div class="field">
+          <label for="confirmPassword">Confirm password</label>
+          <input type="password" id="confirmPassword" name="confirmPassword" placeholder="Re-enter password" autocomplete="new-password" required>
+          <span class="field-error" id="confirmPasswordError">Passwords don't match.</span>
         </div>
 
-        <button type="submit" class="submit" id="submitBtn">Sign in</button>
+        <label class="terms">
+          <input type="checkbox" id="terms" name="terms">
+          <span>I agree to the <a href="#">Terms of Service</a> and <a href="#">Privacy Policy</a></span>
+        </label>
+        <span class="field-error" id="termsError">You must accept the terms to continue.</span>
+
+        <button type="submit" class="submit" id="submitBtn">Create account</button>
       </form>
 
       <div class="divider">or</div>
@@ -350,11 +338,21 @@
   </main>
 
 <script>
-  const form = document.getElementById('loginForm');
+  const form = document.getElementById('registerForm');
+  const fullNameInput = document.getElementById('fullName');
   const emailInput = document.getElementById('email');
   const passwordInput = document.getElementById('password');
+  const confirmInput = document.getElementById('confirmPassword');
+  const termsInput = document.getElementById('terms');
+
+  const fullNameError = document.getElementById('fullNameError');
   const emailError = document.getElementById('emailError');
   const passwordError = document.getElementById('passwordError');
+  const confirmPasswordError = document.getElementById('confirmPasswordError');
+  const termsError = document.getElementById('termsError');
+
+  const strengthBar = document.getElementById('strengthBar');
+  const strengthLabel = document.getElementById('strengthLabel');
   const formMsg = document.getElementById('formMsg');
   const submitBtn = document.getElementById('submitBtn');
 
@@ -377,15 +375,50 @@
     formMsg.textContent = '';
   }
 
+  function scorePassword(value) {
+    let score = 0;
+    if (value.length >= 8) score++;
+    if (/[A-Z]/.test(value) && /[a-z]/.test(value)) score++;
+    if (/\d/.test(value)) score++;
+    if (/[^A-Za-z0-9]/.test(value)) score++;
+    return score;
+  }
+
+  function updateStrength(value) {
+    const bars = strengthBar.querySelectorAll('span');
+    const score = value.length === 0 ? 0 : Math.max(1, scorePassword(value));
+    const colors = ['#E4573D', '#E8823C', '#F3B26B', '#3E7C5A'];
+    const labels = ['Weak', 'Fair', 'Good', 'Strong'];
+
+    bars.forEach((bar, i) => {
+      bar.style.background = i < score ? colors[score - 1] : 'rgba(15,42,46,0.12)';
+    });
+
+    strengthLabel.textContent = value.length === 0 ? '\u00A0' : labels[score - 1];
+  }
+
+  passwordInput.addEventListener('input', () => {
+    updateStrength(passwordInput.value);
+    if (passwordInput.classList.contains('invalid')) {
+      setFieldState(passwordInput, passwordError, passwordInput.value.length >= 8);
+    }
+  });
+
   emailInput.addEventListener('input', () => {
     if (emailInput.classList.contains('invalid')) {
       setFieldState(emailInput, emailError, isValidEmail(emailInput.value.trim()));
     }
   });
 
-  passwordInput.addEventListener('input', () => {
-    if (passwordInput.classList.contains('invalid')) {
-      setFieldState(passwordInput, passwordError, passwordInput.value.length > 0);
+  fullNameInput.addEventListener('input', () => {
+    if (fullNameInput.classList.contains('invalid')) {
+      setFieldState(fullNameInput, fullNameError, fullNameInput.value.trim().length > 0);
+    }
+  });
+
+  confirmInput.addEventListener('input', () => {
+    if (confirmInput.classList.contains('invalid')) {
+      setFieldState(confirmInput, confirmPasswordError, confirmInput.value === passwordInput.value);
     }
   });
 
@@ -393,64 +426,63 @@
     e.preventDefault();
     clearMessage();
 
+    const fullName = fullNameInput.value.trim();
     const email = emailInput.value.trim();
     const password = passwordInput.value;
+    const confirmPassword = confirmInput.value;
 
+    const fullNameValid = fullName.length > 0;
     const emailValid = isValidEmail(email);
-    const passwordValid = password.length > 0;
+    const passwordValid = password.length >= 8;
+    const confirmValid = confirmPassword === password && confirmPassword.length > 0;
+    const termsValid = termsInput.checked;
 
+    setFieldState(fullNameInput, fullNameError, fullNameValid);
     setFieldState(emailInput, emailError, emailValid);
     setFieldState(passwordInput, passwordError, passwordValid);
+    setFieldState(confirmInput, confirmPasswordError, confirmValid);
+    termsError.classList.toggle('show', !termsValid);
 
-    if (!emailValid || !passwordValid) {
+    if (!fullNameValid || !emailValid || !passwordValid || !confirmValid || !termsValid) {
       showMessage('Fix the highlighted fields and try again.', 'error');
       return;
     }
 
     submitBtn.disabled = true;
-    submitBtn.textContent = 'Signing in…';
+    submitBtn.textContent = 'Creating account…';
 
     try {
-      // Replace with your real auth endpoint.
-      // Expected request body maps to the Users table: { email, password }
-      const response = await fetch('/api/auth/login', {
+      // Replace with your real registration endpoint.
+      // Maps to the Users table: full_name, email, password (hashed server-side into password_hash)
+      const response = await fetch('/api/auth/register', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email, password })
+        body: JSON.stringify({ full_name: fullName, email, password })
       });
 
       if (!response.ok) {
         const data = await response.json().catch(() => ({}));
-        throw new Error(data.message || 'Invalid email or password.');
+        // Common case: email already registered (Users.email is UNIQUE)
+        throw new Error(data.message || 'Could not create account. That email may already be registered.');
       }
 
       const data = await response.json();
       // Expected: { token, user: { user_id, email, full_name, role, ... } }
       if (data.token) {
-        localStorage.setItem('waypoint_token', data.token);
+        localStorage.setItem('globetrotter_token', data.token);
       }
 
-      showMessage('Signed in. Redirecting…', 'success');
+      showMessage('Account created. Redirecting to sign in…', 'success');
       setTimeout(() => {
-        window.location.href = '/dashboard.html';
-      }, 700);
+        window.location.href = 'login.html';
+      }, 900);
 
     } catch (err) {
       showMessage(err.message || 'Something went wrong. Please try again.', 'error');
     } finally {
       submitBtn.disabled = false;
-      submitBtn.textContent = 'Sign in';
+      submitBtn.textContent = 'Create account';
     }
-  });
-
-  document.getElementById('signupLink').addEventListener('click', (e) => {
-    e.preventDefault();
-    window.location.href = '/signup.html';
-  });
-
-  document.getElementById('forgotLink').addEventListener('click', (e) => {
-    e.preventDefault();
-    window.location.href = '/forgot-password.html';
   });
 
   document.getElementById('googleBtn').addEventListener('click', () => {
